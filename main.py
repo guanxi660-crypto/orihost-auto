@@ -56,31 +56,6 @@ def safe_window_handles(sb):
         return []
 
 
-# ==========================================================
-# 页面检测
-# ==========================================================
-
-def is_login_page(sb):
-    try:
-        return sb.is_element_present(EMAIL_SEL)
-    except:
-        return False
-
-
-def ensure_login_page(sb, retries=5):
-    for i in range(retries):
-        if is_login_page(sb):
-            return True
-
-        print(f"♻️ 登录页异常，重试 {i+1}/{retries}")
-        screenshot(sb, f"login_retry_{i}.png")
-
-        sb.open(LOGIN_URL)
-        time.sleep(5)
-
-    return False
-
-
 def is_logged_in(sb):
     try:
         return "Welcome back" in sb.get_text("body")
@@ -101,36 +76,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# Server 页面修复
-# ==========================================================
-
-def is_server_page_broken(sb):
-    try:
-        text = sb.get_text("body")
-        return (
-            "Something went wrong" in text
-            or "requested resource could not be found" in text.lower()
-        )
-    except:
-        return True
-
-
-def fix_server_page(sb, url, retries=5):
-    for i in range(retries):
-        if not is_server_page_broken(sb):
-            return True
-
-        print(f"♻️ Server页异常，刷新 {i+1}/{retries}")
-        screenshot(sb, f"server_retry_{i}.png")
-
-        sb.open(url)
-        time.sleep(5)
-
-    return False
-
-
-# ==========================================================
-# Linkvertise
+# Linkvertise 自动流程
 # ==========================================================
 
 def handle_linkvertise(sb):
@@ -178,7 +124,9 @@ def run():
     password = os.getenv("ORIHOST_PASSWORD")
 
     with SB(
-        uc=False,
+        uc=True,
+        test=True,
+        locale="en",
         headless=True,
         xvfb=True,
         incognito=True,
@@ -188,10 +136,6 @@ def run():
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
         time.sleep(5)
-
-        # ⭐ 确保登录页正常
-        if not ensure_login_page(sb):
-            return "LOGIN_PAGE_FAIL"
 
         screenshot(sb, "login.png")
 
@@ -223,10 +167,6 @@ def run():
         sb.open(server_url)
         time.sleep(5)
 
-        # ⭐ 修复 server 页面
-        if not fix_server_page(sb, server_url):
-            return "PAGE_BROKEN"
-
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
@@ -244,6 +184,7 @@ def run():
 
         time.sleep(5)
 
+        # ✅ 安全切换窗口
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
@@ -254,6 +195,7 @@ def run():
 
         handle_linkvertise(sb)
 
+        # 回主页面
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
@@ -283,8 +225,7 @@ def main():
 OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
-LOGIN_PAGE_FAIL = 登录页加载失败
-PAGE_BROKEN = Server页加载失败
+CF_FAIL = CF验证失败
 BROWSER_CRASH = 浏览器崩溃
 """
 
