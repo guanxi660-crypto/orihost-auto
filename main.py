@@ -69,7 +69,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# ⭐ 关键：点击进入 server（替代 open）
+# ✅ 点击进入 server（修复版）
 # ==========================================================
 
 def open_server_via_click(sb, server_id):
@@ -80,7 +80,6 @@ def open_server_via_click(sb, server_id):
             sb.open(HOME_URL)
             time.sleep(5)
 
-            # 等待 server 卡片出现
             sb.wait_for_element("span.text-neutral-500", timeout=10)
 
             spans = sb.find_elements("span.text-neutral-500")
@@ -89,10 +88,11 @@ def open_server_via_click(sb, server_id):
                 if server_id in s.text:
                     print("✅ 找到 server，点击进入")
 
-                    # 点击父元素（卡片）
-                    sb.execute_script("""
-                        arguments[0].closest('a').click();
-                    """, s)
+                    try:
+                        s.click()
+                    except:
+                        # fallback JS click（正确写法）
+                        sb.driver.execute_script("arguments[0].click();", s)
 
                     time.sleep(5)
                     return True
@@ -106,7 +106,7 @@ def open_server_via_click(sb, server_id):
 
 
 # ==========================================================
-# fallback：检测异常页面并刷新
+# 页面异常修复
 # ==========================================================
 
 def ensure_server_ok(sb):
@@ -209,15 +209,15 @@ def run():
 
         print("🎮 Server:", server_id)
 
-        # ⭐ 核心：点击进入
+        # ⭐ 点击进入
         if not open_server_via_click(sb, server_id):
             return "OPEN_SERVER_FAIL"
 
-        # fallback 检测
+        # 页面修复
         if not ensure_server_ok(sb):
             return "SERVER_LOAD_FAIL"
 
-        # 续期逻辑
+        # 续期判断
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
