@@ -76,6 +76,35 @@ def extract_server_id(sb):
 
 
 # ==========================================================
+# ⭐ 修复：服务器页面加载失败自动刷新
+# ==========================================================
+
+def ensure_server_page_loaded(sb, retries=3):
+    for i in range(retries):
+        try:
+            body = sb.get_text("body")
+
+            if (
+                "Something went wrong" in body
+                or "requested resource could not be found" in body
+            ):
+                print(f"⚠️ 页面渲染失败，尝试刷新 ({i+1}/{retries})")
+                screenshot(sb, f"server_error_{i}.png")
+
+                sb.refresh()
+                time.sleep(5)
+                continue
+
+            # 页面正常
+            return True
+
+        except:
+            pass
+
+    return False
+
+
+# ==========================================================
 # Linkvertise 自动流程
 # ==========================================================
 
@@ -167,6 +196,12 @@ def run():
         sb.open(server_url)
         time.sleep(5)
 
+        # ⭐ 关键修复点
+        if not ensure_server_page_loaded(sb):
+            screenshot(sb, "server_load_fail.png")
+            return "SERVER_LOAD_FAIL"
+
+        # 判断是否达到续期限制
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
@@ -184,7 +219,7 @@ def run():
 
         time.sleep(5)
 
-        # ✅ 安全切换窗口
+        # 窗口切换
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
@@ -225,7 +260,7 @@ def main():
 OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
-CF_FAIL = CF验证失败
+SERVER_LOAD_FAIL = 服务器页面加载失败
 BROWSER_CRASH = 浏览器崩溃
 """
 
