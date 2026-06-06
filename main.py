@@ -49,13 +49,6 @@ def tg_send(msg):
         print("TG error:", e)
 
 
-def safe_window_handles(sb):
-    try:
-        return sb.driver.window_handles
-    except:
-        return []
-
-
 def is_logged_in(sb):
     try:
         return "Welcome back" in sb.get_text("body")
@@ -76,36 +69,63 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# ⭐ 修复：服务器页面加载失败自动刷新
+# ⭐ 关键：点击进入 server（替代 open）
 # ==========================================================
 
-def ensure_server_page_loaded(sb, retries=3):
-    for i in range(retries):
+def open_server_via_click(sb, server_id):
+    print("👉 尝试点击进入服务器")
+
+    for i in range(3):
         try:
-            body = sb.get_text("body")
+            sb.open(HOME_URL)
+            time.sleep(5)
 
-            if (
-                "Something went wrong" in body
-                or "requested resource could not be found" in body
-            ):
-                print(f"⚠️ 页面渲染失败，尝试刷新 ({i+1}/{retries})")
-                screenshot(sb, f"server_error_{i}.png")
+            # 等待 server 卡片出现
+            sb.wait_for_element("span.text-neutral-500", timeout=10)
 
-                sb.refresh()
-                time.sleep(5)
-                continue
+            spans = sb.find_elements("span.text-neutral-500")
 
-            # 页面正常
-            return True
+            for s in spans:
+                if server_id in s.text:
+                    print("✅ 找到 server，点击进入")
 
-        except:
-            pass
+                    # 点击父元素（卡片）
+                    sb.execute_script("""
+                        arguments[0].closest('a').click();
+                    """, s)
+
+                    time.sleep(5)
+                    return True
+
+        except Exception as e:
+            print("click server error:", e)
+
+        time.sleep(3)
 
     return False
 
 
 # ==========================================================
-# Linkvertise 自动流程
+# fallback：检测异常页面并刷新
+# ==========================================================
+
+def ensure_server_ok(sb):
+    for i in range(3):
+        body = sb.get_text("body")
+
+        if "Something went wrong" in body:
+            print(f"⚠️ 页面异常，刷新 {i+1}")
+            screenshot(sb, f"server_err_{i}.png")
+            sb.refresh()
+            time.sleep(5)
+        else:
+            return True
+
+    return False
+
+
+# ==========================================================
+# Linkvertise
 # ==========================================================
 
 def handle_linkvertise(sb):
@@ -166,8 +186,6 @@ def run():
         sb.open(LOGIN_URL)
         time.sleep(5)
 
-        screenshot(sb, "login.png")
-
         sb.type(EMAIL_SEL, email)
         sb.type(PASS_SEL, password)
         sb.click(SUBMIT_SEL)
@@ -184,7 +202,6 @@ def run():
 
         print("✅ 登录成功")
 
-        time.sleep(3)
         server_id = extract_server_id(sb)
 
         if not server_id:
@@ -192,16 +209,15 @@ def run():
 
         print("🎮 Server:", server_id)
 
-        server_url = f"https://panel.orihost.com/server/{server_id}"
-        sb.open(server_url)
-        time.sleep(5)
+        # ⭐ 核心：点击进入
+        if not open_server_via_click(sb, server_id):
+            return "OPEN_SERVER_FAIL"
 
-        # ⭐ 关键修复点
-        if not ensure_server_page_loaded(sb):
-            screenshot(sb, "server_load_fail.png")
+        # fallback 检测
+        if not ensure_server_ok(sb):
             return "SERVER_LOAD_FAIL"
 
-        # 判断是否达到续期限制
+        # 续期逻辑
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
@@ -219,25 +235,12 @@ def run():
 
         time.sleep(5)
 
-        # 窗口切换
-        handles = safe_window_handles(sb)
+        handles = sb.driver.window_handles
 
         if len(handles) > 1:
-            try:
-                sb.switch_to_window(1)
-            except:
-                return "BROWSER_CRASH"
+            sb.switch_to_window(1)
 
         handle_linkvertise(sb)
-
-        # 回主页面
-        try:
-            sb.switch_to_window(0)
-            sb.open(HOME_URL)
-        except:
-            return "BROWSER_CRASH"
-
-        time.sleep(5)
 
         return "OK"
 
@@ -257,11 +260,11 @@ def main():
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
 
 说明:
-OK = 成功续期
-LIMIT = 达到续期上限
+OK = 成功
+LIMIT = 达到上限
 LOGIN_FAIL = 登录失败
-SERVER_LOAD_FAIL = 服务器页面加载失败
-BROWSER_CRASH = 浏览器崩溃
+OPEN_SERVER_FAIL = 无法进入服务器
+SERVER_LOAD_FAIL = 页面加载失败
 """
 
     print(report)
