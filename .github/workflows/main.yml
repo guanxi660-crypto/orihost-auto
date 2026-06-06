@@ -1,0 +1,49 @@
+name: Orihost Auto Renew
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+  schedule:
+    # 每周一次（周日 UTC 18点）
+    - cron: "0 18 * * 0"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          pip install -r requirements.txt
+
+      - name: Run script
+        env:
+          ORIHOST_EMAIL: ${{ secrets.ORIHOST_EMAIL }}
+          ORIHOST_PASSWORD: ${{ secrets.ORIHOST_PASSWORD }}
+
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+        run: |
+          python main.py
+
+      - name: Upload debug
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: |
+            screenshots/**
