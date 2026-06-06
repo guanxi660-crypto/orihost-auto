@@ -45,8 +45,8 @@ def tg_send(msg):
             },
             timeout=20
         )
-    except Exception as e:
-        print("TG error:", e)
+    except:
+        pass
 
 
 def is_logged_in(sb):
@@ -69,7 +69,26 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# ✅ 点击进入 server（修复版）
+# ⭐ 防 crash
+# ==========================================================
+
+def is_driver_alive(sb):
+    try:
+        _ = sb.driver.current_url
+        return True
+    except:
+        return False
+
+
+def safe_window_handles(sb):
+    try:
+        return sb.driver.window_handles
+    except:
+        return []
+
+
+# ==========================================================
+# 点击 server（安全版）
 # ==========================================================
 
 def open_server_via_click(sb, server_id):
@@ -80,8 +99,6 @@ def open_server_via_click(sb, server_id):
             sb.open(HOME_URL)
             time.sleep(5)
 
-            sb.wait_for_element("span.text-neutral-500", timeout=10)
-
             spans = sb.find_elements("span.text-neutral-500")
 
             for s in spans:
@@ -91,10 +108,15 @@ def open_server_via_click(sb, server_id):
                     try:
                         s.click()
                     except:
-                        # fallback JS click（正确写法）
                         sb.driver.execute_script("arguments[0].click();", s)
 
                     time.sleep(5)
+
+                    # ⭐ 检查浏览器是否还活着
+                    if not is_driver_alive(sb):
+                        print("💥 浏览器已崩溃")
+                        return False
+
                     return True
 
         except Exception as e:
@@ -106,20 +128,22 @@ def open_server_via_click(sb, server_id):
 
 
 # ==========================================================
-# 页面异常修复
+# 页面检测
 # ==========================================================
 
 def ensure_server_ok(sb):
     for i in range(3):
-        body = sb.get_text("body")
+        try:
+            body = sb.get_text("body")
 
-        if "Something went wrong" in body:
-            print(f"⚠️ 页面异常，刷新 {i+1}")
-            screenshot(sb, f"server_err_{i}.png")
-            sb.refresh()
-            time.sleep(5)
-        else:
-            return True
+            if "Something went wrong" in body:
+                print(f"⚠️ 页面异常，刷新 {i+1}")
+                sb.refresh()
+                time.sleep(5)
+            else:
+                return True
+        except:
+            return False
 
     return False
 
@@ -132,42 +156,43 @@ def handle_linkvertise(sb):
     print("🔗 Linkvertise flow...")
 
     for _ in range(40):
+        if not is_driver_alive(sb):
+            return False
+
         try:
             if sb.is_element_visible('button:contains("Get Link")'):
                 sb.click('button:contains("Get Link")')
-                time.sleep(3)
         except:
             pass
 
         try:
             if sb.is_element_visible('div:contains("Watch Ads")'):
                 sb.click('div:contains("Watch Ads")')
-                time.sleep(2)
         except:
             pass
 
         try:
             if sb.is_element_visible('button:contains("Continue")'):
                 sb.click('button:contains("Continue")')
-                time.sleep(3)
         except:
             pass
 
         try:
             if sb.is_element_visible('span:contains("Skip Ad")'):
                 sb.click('span:contains("Skip Ad")')
-                time.sleep(2)
         except:
             pass
 
         time.sleep(3)
 
+    return True
+
 
 # ==========================================================
-# 主流程
+# 主流程（单次）
 # ==========================================================
 
-def run():
+def run_once():
 
     email = os.getenv("ORIHOST_EMAIL")
     password = os.getenv("ORIHOST_PASSWORD")
@@ -197,7 +222,6 @@ def run():
                 break
             time.sleep(1)
         else:
-            screenshot(sb, "login_fail.png")
             return "LOGIN_FAIL"
 
         print("✅ 登录成功")
@@ -209,23 +233,15 @@ def run():
 
         print("🎮 Server:", server_id)
 
-        # ⭐ 点击进入
         if not open_server_via_click(sb, server_id):
-            return "OPEN_SERVER_FAIL"
+            return "BROWSER_CRASH"
 
-        # 页面修复
         if not ensure_server_ok(sb):
             return "SERVER_LOAD_FAIL"
 
-        # 续期判断
-        if "Renew Limit Reached" in sb.get_text("body"):
-            return "LIMIT"
-
         try:
             sb.click('button:contains("Renew")')
-            time.sleep(3)
         except:
-            screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
         try:
@@ -235,7 +251,7 @@ def run():
 
         time.sleep(5)
 
-        handles = sb.driver.window_handles
+        handles = safe_window_handles(sb)
 
         if len(handles) > 1:
             sb.switch_to_window(1)
@@ -243,6 +259,29 @@ def run():
         handle_linkvertise(sb)
 
         return "OK"
+
+
+# ==========================================================
+# ⭐ 总控（自动重试）
+# ==========================================================
+
+def run():
+    for i in range(3):
+        print(f"🚀 尝试运行 {i+1}/3")
+
+        result = run_once()
+
+        if result == "OK":
+            return result
+
+        if result == "BROWSER_CRASH":
+            print("♻️ 浏览器崩溃，重试...")
+            time.sleep(5)
+            continue
+
+        return result
+
+    return "FAILED_AFTER_RETRY"
 
 
 # ==========================================================
@@ -258,13 +297,6 @@ def main():
 状态: `{result}`
 
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
-
-说明:
-OK = 成功
-LIMIT = 达到上限
-LOGIN_FAIL = 登录失败
-OPEN_SERVER_FAIL = 无法进入服务器
-SERVER_LOAD_FAIL = 页面加载失败
 """
 
     print(report)
