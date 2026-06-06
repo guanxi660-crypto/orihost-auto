@@ -56,6 +56,31 @@ def safe_window_handles(sb):
         return []
 
 
+# ==========================================================
+# 页面检测
+# ==========================================================
+
+def is_login_page(sb):
+    try:
+        return sb.is_element_present(EMAIL_SEL)
+    except:
+        return False
+
+
+def ensure_login_page(sb, retries=5):
+    for i in range(retries):
+        if is_login_page(sb):
+            return True
+
+        print(f"♻️ 登录页异常，重试 {i+1}/{retries}")
+        screenshot(sb, f"login_retry_{i}.png")
+
+        sb.open(LOGIN_URL)
+        time.sleep(5)
+
+    return False
+
+
 def is_logged_in(sb):
     try:
         return "Welcome back" in sb.get_text("body")
@@ -76,7 +101,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# ⭐ 页面异常修复（核心）
+# Server 页面修复
 # ==========================================================
 
 def is_server_page_broken(sb):
@@ -95,8 +120,8 @@ def fix_server_page(sb, url, retries=5):
         if not is_server_page_broken(sb):
             return True
 
-        print(f"♻️ 页面异常，刷新 {i+1}/{retries}")
-        screenshot(sb, f"broken_{i}.png")
+        print(f"♻️ Server页异常，刷新 {i+1}/{retries}")
+        screenshot(sb, f"server_retry_{i}.png")
 
         sb.open(url)
         time.sleep(5)
@@ -164,6 +189,10 @@ def run():
         sb.open(LOGIN_URL)
         time.sleep(5)
 
+        # ⭐ 确保登录页正常
+        if not ensure_login_page(sb):
+            return "LOGIN_PAGE_FAIL"
+
         screenshot(sb, "login.png")
 
         sb.type(EMAIL_SEL, email)
@@ -194,15 +223,13 @@ def run():
         sb.open(server_url)
         time.sleep(5)
 
-        # ⭐ 修复页面异常
+        # ⭐ 修复 server 页面
         if not fix_server_page(sb, server_url):
             return "PAGE_BROKEN"
 
-        # Renew Limit
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
-        # 点击 Renew
         try:
             sb.click('button:contains("Renew")')
             time.sleep(3)
@@ -210,7 +237,6 @@ def run():
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
-        # Linkvertise
         try:
             sb.click('button:contains("Open Linkvertise")')
         except:
@@ -257,7 +283,8 @@ def main():
 OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
-PAGE_BROKEN = 页面加载失败
+LOGIN_PAGE_FAIL = 登录页加载失败
+PAGE_BROKEN = Server页加载失败
 BROWSER_CRASH = 浏览器崩溃
 """
 
