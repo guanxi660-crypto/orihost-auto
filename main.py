@@ -2,10 +2,7 @@
 
 import os
 import time
-import random
-import re
 import requests
-
 from seleniumbase import SB
 
 
@@ -52,35 +49,16 @@ def tg_send(msg):
         print("TG error:", e)
 
 
-def is_cf(sb):
+def safe_window_handles(sb):
     try:
-        body = sb.get_text("body").lower()
-        return "checking your browser" in body or "just a moment" in body
+        return sb.driver.window_handles
     except:
-        return False
-
-
-def wait_cf(sb, timeout=120):
-    start = time.time()
-
-    while time.time() - start < timeout:
-        if not is_cf(sb):
-            return True
-
-        try:
-            sb.uc_gui_click_captcha()
-        except:
-            pass
-
-        time.sleep(5)
-
-    return False
+        return []
 
 
 def is_logged_in(sb):
     try:
-        text = sb.get_text("body")
-        return "Welcome back" in text
+        return "Welcome back" in sb.get_text("body")
     except:
         return False
 
@@ -88,14 +66,12 @@ def is_logged_in(sb):
 def extract_server_id(sb):
     try:
         spans = sb.find_elements("span.text-neutral-500")
-
         for s in spans:
             txt = s.text.strip()
             if txt.startswith("#"):
                 return txt.replace("#", "")
     except:
         pass
-
     return None
 
 
@@ -106,11 +82,7 @@ def extract_server_id(sb):
 def handle_linkvertise(sb):
     print("🔗 Linkvertise flow...")
 
-    for _ in range(60):
-
-        url = sb.get_current_url()
-
-        # Get Link
+    for _ in range(40):
         try:
             if sb.is_element_visible('button:contains("Get Link")'):
                 sb.click('button:contains("Get Link")')
@@ -118,7 +90,6 @@ def handle_linkvertise(sb):
         except:
             pass
 
-        # Watch Ads
         try:
             if sb.is_element_visible('div:contains("Watch Ads")'):
                 sb.click('div:contains("Watch Ads")')
@@ -126,7 +97,6 @@ def handle_linkvertise(sb):
         except:
             pass
 
-        # Continue
         try:
             if sb.is_element_visible('button:contains("Continue")'):
                 sb.click('button:contains("Continue")')
@@ -134,21 +104,10 @@ def handle_linkvertise(sb):
         except:
             pass
 
-        # Skip Ad
         try:
             if sb.is_element_visible('span:contains("Skip Ad")'):
                 sb.click('span:contains("Skip Ad")')
                 time.sleep(2)
-        except:
-            pass
-
-        # success -> Open
-        try:
-            if "/success" in url:
-                if sb.is_element_visible('button:contains("Open")'):
-                    sb.click('button:contains("Open")')
-                    time.sleep(3)
-                    break
         except:
             pass
 
@@ -164,29 +123,30 @@ def run():
     email = os.getenv("ORIHOST_EMAIL")
     password = os.getenv("ORIHOST_PASSWORD")
 
-    with SB(uc=True, test=True, locale="en") as sb:
+    with SB(
+        uc=True,
+        test=True,
+        locale="en",
+        headless=True,
+        xvfb=True,
+        incognito=True,
+        disable_gpu=True,
+        no_sandbox=True,
+        disable_dev_shm_usage=True,
+    ) as sb:
 
         print("🌍 打开登录页")
-        sb.uc_open_with_reconnect(LOGIN_URL, reconnect_time=5)
+        sb.open(LOGIN_URL)
         time.sleep(5)
-
-        # Cloudflare
-        if is_cf(sb):
-            print("🛡️ CF验证")
-            if not wait_cf(sb):
-                return "CF_FAIL"
 
         screenshot(sb, "login.png")
 
-        # 输入账号
         sb.type(EMAIL_SEL, email)
         sb.type(PASS_SEL, password)
-
         sb.click(SUBMIT_SEL)
 
         time.sleep(5)
 
-        # 登录验证
         for _ in range(30):
             if is_logged_in(sb):
                 break
@@ -197,7 +157,6 @@ def run():
 
         print("✅ 登录成功")
 
-        # 获取服务器ID
         time.sleep(3)
         server_id = extract_server_id(sb)
 
@@ -208,14 +167,11 @@ def run():
 
         server_url = f"https://panel.orihost.com/server/{server_id}"
         sb.open(server_url)
-
         time.sleep(5)
 
-        # Renew Limit 检测
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
-        # 点击 Renew
         try:
             sb.click('button:contains("Renew")')
             time.sleep(3)
@@ -223,7 +179,6 @@ def run():
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
-        # 弹窗 → Open Linkvertise
         try:
             sb.click('button:contains("Open Linkvertise")')
         except:
@@ -231,15 +186,23 @@ def run():
 
         time.sleep(5)
 
-        # 切换窗口
-        if len(sb.driver.window_handles) > 1:
-            sb.switch_to_window(1)
+        # ✅ 安全切换窗口
+        handles = safe_window_handles(sb)
+
+        if len(handles) > 1:
+            try:
+                sb.switch_to_window(1)
+            except:
+                return "BROWSER_CRASH"
 
         handle_linkvertise(sb)
 
-        # 回到主页面
-        sb.switch_to_window(0)
-        sb.open(HOME_URL)
+        # 回主页面
+        try:
+            sb.switch_to_window(0)
+            sb.open(HOME_URL)
+        except:
+            return "BROWSER_CRASH"
 
         time.sleep(5)
 
@@ -265,6 +228,7 @@ OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
 CF_FAIL = CF验证失败
+BROWSER_CRASH = 浏览器崩溃
 """
 
     print(report)
