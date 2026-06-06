@@ -76,7 +76,36 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# Linkvertise 自动流程
+# ⭐ 页面异常修复（核心）
+# ==========================================================
+
+def is_server_page_broken(sb):
+    try:
+        text = sb.get_text("body")
+        return (
+            "Something went wrong" in text
+            or "requested resource could not be found" in text.lower()
+        )
+    except:
+        return True
+
+
+def fix_server_page(sb, url, retries=5):
+    for i in range(retries):
+        if not is_server_page_broken(sb):
+            return True
+
+        print(f"♻️ 页面异常，刷新 {i+1}/{retries}")
+        screenshot(sb, f"broken_{i}.png")
+
+        sb.open(url)
+        time.sleep(5)
+
+    return False
+
+
+# ==========================================================
+# Linkvertise
 # ==========================================================
 
 def handle_linkvertise(sb):
@@ -124,9 +153,7 @@ def run():
     password = os.getenv("ORIHOST_PASSWORD")
 
     with SB(
-        uc=True,
-        test=True,
-        locale="en",
+        uc=False,
         headless=True,
         xvfb=True,
         incognito=True,
@@ -167,9 +194,15 @@ def run():
         sb.open(server_url)
         time.sleep(5)
 
+        # ⭐ 修复页面异常
+        if not fix_server_page(sb, server_url):
+            return "PAGE_BROKEN"
+
+        # Renew Limit
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
+        # 点击 Renew
         try:
             sb.click('button:contains("Renew")')
             time.sleep(3)
@@ -177,6 +210,7 @@ def run():
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
+        # Linkvertise
         try:
             sb.click('button:contains("Open Linkvertise")')
         except:
@@ -184,7 +218,6 @@ def run():
 
         time.sleep(5)
 
-        # ✅ 安全切换窗口
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
@@ -195,7 +228,6 @@ def run():
 
         handle_linkvertise(sb)
 
-        # 回主页面
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
@@ -225,7 +257,7 @@ def main():
 OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
-CF_FAIL = CF验证失败
+PAGE_BROKEN = 页面加载失败
 BROWSER_CRASH = 浏览器崩溃
 """
 
