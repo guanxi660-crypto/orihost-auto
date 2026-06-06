@@ -130,9 +130,7 @@ def run():
         headless=True,
         xvfb=True,
         incognito=True,
-        disable_gpu=True,
-        no_sandbox=True,
-        disable_dev_shm_usage=True,
+        chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu"
     ) as sb:
 
         print("🌍 打开登录页")
