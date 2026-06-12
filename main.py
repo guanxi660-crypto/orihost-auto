@@ -69,14 +69,14 @@ def extract_server_id(sb):
         for s in spans:
             txt = s.text.strip()
             if txt.startswith("#"):
-                return txt.replace("#", "")
+                return txt.replace("#", "").strip()
     except:
         pass
     return None
 
 
 # ==========================================================
-# JS 注入（核心）
+# JS 注入
 # ==========================================================
 
 def inject_orihost_js(sb):
@@ -85,9 +85,21 @@ def inject_orihost_js(sb):
             js = f.read()
 
         sb.execute_script(js)
-        print("✅ orihost.js 已注入")
+        print("✅ JS 已注入")
     except Exception as e:
         print("❌ JS 注入失败:", e)
+
+
+# ==========================================================
+# 页面是否异常
+# ==========================================================
+
+def is_page_error(sb):
+    try:
+        body = sb.get_text("body")
+        return "Something went wrong" in body
+    except:
+        return True
 
 
 # ==========================================================
@@ -122,7 +134,6 @@ def run():
         sb.type(PASS_SEL, password)
         sb.click(SUBMIT_SEL)
 
-        # 等待登录
         for _ in range(30):
             if is_logged_in(sb):
                 break
@@ -142,135 +153,100 @@ def run():
         if not server_id:
             return "NO_SERVER"
 
+        server_id = server_id.strip()  # 🔥 关键修复
+
         print("🎮 Server:", server_id)
 
-        server_url = f"https://panel.orihost.com/server/{server_id}"
+        server_url = f"https://panel.orihost.com/server/{server_id.strip()}"
 
         # =========================
-        # 3. 打开 Server 页面
+        # 3. 打开 Server 页面（带重试）
         # =========================
-        sb.open(server_url)
+        for attempt in range(3):
 
-        sb.wait_for_element("body", timeout=30)
-        time.sleep(10)
+            print(f"🌐 打开服务器页 (尝试 {attempt+1})")
+            sb.open(server_url)
 
-        body = sb.get_text("body")
+            sb.wait_for_element("body", timeout=30)
+            time.sleep(8)
 
-        if "Something went wrong" in body:
+            if not is_page_error(sb):
+                break
 
-            print("⚠️ 页面异常")
+            print("⚠️ 页面异常，重试中...")
+            time.sleep(3)
 
-            # 当前 URL
-            print("URL:", sb.get_current_url())
-
-            # 保存截图
-            try:
-                sb.save_screenshot("page_error.png")
-            except Exception as e:
-                print("screenshot error:", e)
-
-            # 保存源码
-            try:
-                with open("page_error.html", "w", encoding="utf-8") as f:
-                    f.write(sb.get_page_source())
-            except Exception as e:
-                print("html save error:", e)
-
-            # 输出 Cookie 名称
-            try:
-                cookies = sb.driver.get_cookies()
-                print("Cookies:")
-                for c in cookies:
-                    print(" -", c.get("name"))
-            except Exception as e:
-                print("cookie error:", e)
-
-            # 浏览器日志
-            try:
-                logs = sb.driver.get_log("browser")
-                print("Browser logs:")
-                for log in logs[-20:]:
-                    print(log)
-            except Exception as e:
-                print("log error:", e)
-
+        else:
+            screenshot(sb, "page_error.png")
             return "PAGE_ERROR"
 
         # =========================
-        # 5. 检查登录状态是否丢失
+        # 4. 登录失效检测
         # =========================
         if "login" in sb.get_current_url().lower():
             return "LOGIN_EXPIRED"
 
         # =========================
-        # 6. 等待 UI 加载
-        # =========================
-        sb.wait_for_element("body", timeout=30)
-        time.sleep(3)
-
-        # =========================
-        # 7. 等待 Renew 按钮出现
+        # 5. 等待 Renew 按钮
         # =========================
         renew_btn_ok = False
 
         for _ in range(25):
             try:
-                if sb.is_element_visible('button:contains("Renew")'):
-                    renew_btn_ok = True
+                buttons = sb.find_elements("button")
+                for b in buttons:
+                    if "Renew" in b.text:
+                        renew_btn_ok = True
+                        b.click()
+                        break
+                if renew_btn_ok:
                     break
-            except Exception:
+            except:
                 pass
-
             time.sleep(1)
 
         if not renew_btn_ok:
             return "NO_RENEW_BTN"
 
-        # =========================
-        # 8. 点击 Renew
-        # =========================
-        sb.click('button:contains("Renew")')
         time.sleep(3)
 
         # =========================
-        # 9. 打开 Linkvertise
+        # 6. 打开 Linkvertise
         # =========================
         try:
-            sb.click('button:contains("Open Linkvertise")')
-        except Exception:
+            buttons = sb.find_elements("button")
+            for b in buttons:
+                if "Linkvertise" in b.text:
+                    b.click()
+                    break
+        except:
             pass
 
         time.sleep(5)
 
         # =========================
-        # 10. 切换窗口
+        # 7. 切换窗口
         # =========================
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
-
             try:
                 sb.switch_to_window(1)
-            except Exception:
+            except:
                 return "BROWSER_CRASH"
 
-            # =========================
-            # 🚀 注入 JS（接管 Linkvertise）
-            # =========================
             inject_orihost_js(sb)
 
-            print("🚀 Linkvertise 已交给 JS 自动处理")
-
-            # 给 JS 足够运行时间
+            print("🚀 JS 接管 Linkvertise")
             time.sleep(180)
 
         # =========================
-        # 11. 回主页面
+        # 8. 回主页面
         # =========================
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
-        except Exception:
+        except:
             return "BROWSER_CRASH"
 
         time.sleep(5)
