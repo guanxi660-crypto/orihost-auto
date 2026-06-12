@@ -144,23 +144,27 @@ def run():
 
         print("🎮 Server:", server_id)
 
+        server_url = f"https://panel.orihost.com/server/{server_id}"
+
         # =========================
         # 3. 打开 Server 页面
         # =========================
-        server_url = f"https://panel.orihost.com/server/{server_id}"
         sb.open(server_url)
-        time.sleep(5)
 
-        # =========================
-        # 4. 检测页面错误
-        # =========================
+        sb.wait_for_element("body", timeout=30)
+        time.sleep(6)
+
         body = sb.get_text("body")
 
+        # =========================
+        # 4. 页面错误处理
+        # =========================
         if "Something went wrong" in body:
-            print("⚠️ 页面异常，尝试刷新...")
 
-            sb.refresh()
-            time.sleep(5)
+            print("⚠️ 页面异常，重新加载...")
+
+            sb.open(server_url)
+            time.sleep(8)
 
             body = sb.get_text("body")
 
@@ -168,13 +172,19 @@ def run():
                 return "PAGE_ERROR"
 
         # =========================
-        # 5. 等待 UI 加载
+        # 5. 检查登录状态是否丢失
+        # =========================
+        if "login" in sb.get_current_url().lower():
+            return "LOGIN_EXPIRED"
+
+        # =========================
+        # 6. 等待 UI 加载
         # =========================
         sb.wait_for_element("body", timeout=30)
         time.sleep(3)
 
         # =========================
-        # 6. 等待 Renew 按钮出现
+        # 7. 等待 Renew 按钮出现
         # =========================
         renew_btn_ok = False
 
@@ -191,13 +201,13 @@ def run():
             return "NO_RENEW_BTN"
 
         # =========================
-        # 7. 点击 Renew
+        # 8. 点击 Renew
         # =========================
         sb.click('button:contains("Renew")')
         time.sleep(3)
 
         # =========================
-        # 8. 打开 Linkvertise
+        # 9. 打开 Linkvertise
         # =========================
         try:
             sb.click('button:contains("Open Linkvertise")')
@@ -207,7 +217,7 @@ def run():
         time.sleep(5)
 
         # =========================
-        # 9. 切换窗口
+        # 10. 切换窗口
         # =========================
         handles = safe_window_handles(sb)
 
@@ -229,7 +239,7 @@ def run():
             time.sleep(180)
 
         # =========================
-        # 10. 回主页面
+        # 11. 回主页面
         # =========================
         try:
             sb.switch_to_window(0)
