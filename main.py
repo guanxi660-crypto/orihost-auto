@@ -23,7 +23,9 @@ os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 def screenshot(sb, name):
     try:
-        sb.save_screenshot(f"{SCREENSHOT_DIR}/{name}")
+        path = f"{SCREENSHOT_DIR}/{int(time.time())}_{name}"
+        sb.save_screenshot(path)
+        print("📸", path)
     except:
         pass
 
@@ -76,30 +78,45 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# JS 注入
+# 更稳点击（关键）
 # ==========================================================
 
-def inject_orihost_js(sb):
+def click_by_text(sb, tag, keyword):
     try:
-        with open("orihost.js", "r", encoding="utf-8") as f:
-            js = f.read()
-
-        sb.execute_script(js)
-        print("✅ JS 已注入")
-    except Exception as e:
-        print("❌ JS 注入失败:", e)
-
-
-# ==========================================================
-# 页面是否异常
-# ==========================================================
-
-def is_page_error(sb):
-    try:
-        body = sb.get_text("body")
-        return "Something went wrong" in body
+        els = sb.find_elements(tag)
+        for e in els:
+            if keyword.lower() in e.text.lower():
+                e.click()
+                return True
     except:
-        return True
+        pass
+    return False
+
+
+# ==========================================================
+# Linkvertise 流（纯浏览器）
+# ==========================================================
+
+def handle_linkvertise(sb):
+    print("🔗 Linkvertise flow...")
+
+    for i in range(60):
+
+        screenshot(sb, f"lv_{i}.png")
+
+        if click_by_text(sb, "button", "get link"):
+            time.sleep(3)
+
+        if click_by_text(sb, "div", "watch"):
+            time.sleep(3)
+
+        if click_by_text(sb, "button", "continue"):
+            time.sleep(3)
+
+        if click_by_text(sb, "span", "skip"):
+            time.sleep(2)
+
+        time.sleep(2)
 
 
 # ==========================================================
@@ -121,9 +138,6 @@ def run():
         chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu"
     ) as sb:
 
-        # =========================
-        # 1. 登录
-        # =========================
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
         time.sleep(5)
@@ -144,89 +158,37 @@ def run():
 
         print("✅ 登录成功")
 
-        # =========================
-        # 2. 获取 Server ID
-        # =========================
         time.sleep(3)
         server_id = extract_server_id(sb)
 
         if not server_id:
             return "NO_SERVER"
 
-        server_id = server_id.strip()  # 🔥 关键修复
+        server_id = server_id.strip()
 
         print("🎮 Server:", server_id)
 
-        server_url = f"https://panel.orihost.com/server/{server_id.strip()}"
+        server_url = f"https://panel.orihost.com/server/{server_id}"
+        sb.open(server_url)
 
-        # =========================
-        # 3. 打开 Server 页面（带重试）
-        # =========================
-        for attempt in range(3):
+        time.sleep(8)
 
-            print(f"🌐 打开服务器页 (尝试 {attempt+1})")
-            sb.open(server_url)
+        screenshot(sb, "server_page.png")  # ⭐ 核心截图
 
-            sb.wait_for_element("body", timeout=30)
-            time.sleep(8)
+        if "Renew Limit Reached" in sb.get_text("body"):
+            return "LIMIT"
 
-            if not is_page_error(sb):
-                break
-
-            print("⚠️ 页面异常，重试中...")
-            time.sleep(3)
-
-        else:
-            screenshot(sb, "page_error.png")
-            return "PAGE_ERROR"
-
-        # =========================
-        # 4. 登录失效检测
-        # =========================
-        if "login" in sb.get_current_url().lower():
-            return "LOGIN_EXPIRED"
-
-        # =========================
-        # 5. 等待 Renew 按钮
-        # =========================
-        renew_btn_ok = False
-
-        for _ in range(25):
-            try:
-                buttons = sb.find_elements("button")
-                for b in buttons:
-                    if "Renew" in b.text:
-                        renew_btn_ok = True
-                        b.click()
-                        break
-                if renew_btn_ok:
-                    break
-            except:
-                pass
-            time.sleep(1)
-
-        if not renew_btn_ok:
+        if not click_by_text(sb, "button", "renew"):
+            screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
         time.sleep(3)
+        screenshot(sb, "after_renew.png")
 
-        # =========================
-        # 6. 打开 Linkvertise
-        # =========================
-        try:
-            buttons = sb.find_elements("button")
-            for b in buttons:
-                if "Linkvertise" in b.text:
-                    b.click()
-                    break
-        except:
-            pass
+        click_by_text(sb, "button", "linkvertise")
 
         time.sleep(5)
 
-        # =========================
-        # 7. 切换窗口
-        # =========================
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
@@ -235,14 +197,10 @@ def run():
             except:
                 return "BROWSER_CRASH"
 
-            inject_orihost_js(sb)
+        screenshot(sb, "linkvertise_start.png")
 
-            print("🚀 JS 接管 Linkvertise")
-            time.sleep(180)
+        handle_linkvertise(sb)
 
-        # =========================
-        # 8. 回主页面
-        # =========================
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
@@ -267,12 +225,6 @@ def main():
 状态: `{result}`
 
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
-
-说明:
-OK = 成功续期
-LIMIT = 达到续期上限
-LOGIN_FAIL = 登录失败
-BROWSER_CRASH = 浏览器崩溃
 """
 
     print(report)
