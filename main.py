@@ -78,7 +78,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 更稳点击（关键）
+# 通用点击
 # ==========================================================
 
 def click_by_text(sb, tag, keyword):
@@ -87,6 +87,7 @@ def click_by_text(sb, tag, keyword):
         for e in els:
             if keyword.lower() in e.text.lower():
                 e.click()
+                print(f"🖱 点击: {keyword}")
                 return True
     except:
         pass
@@ -94,29 +95,59 @@ def click_by_text(sb, tag, keyword):
 
 
 # ==========================================================
-# Linkvertise 流（纯浏览器）
+# Linkvertise（完整版）
 # ==========================================================
 
 def handle_linkvertise(sb):
     print("🔗 Linkvertise flow...")
 
-    for i in range(60):
+    for i in range(80):
+
+        current_url = ""
+        try:
+            current_url = sb.get_current_url()
+        except:
+            pass
+
+        print("🌐", current_url)
 
         screenshot(sb, f"lv_{i}.png")
 
-        if click_by_text(sb, "button", "get link"):
-            time.sleep(3)
+        # ---------------------------
+        # Get Link
+        # ---------------------------
+        click_by_text(sb, "button", "get link")
 
-        if click_by_text(sb, "div", "watch"):
-            time.sleep(3)
+        # ---------------------------
+        # Watch Ads / Continue
+        # ---------------------------
+        click_by_text(sb, "div", "watch")
+        click_by_text(sb, "button", "continue")
 
-        if click_by_text(sb, "button", "continue"):
-            time.sleep(3)
+        # ---------------------------
+        # Skip Ad
+        # ---------------------------
+        click_by_text(sb, "button", "skip")
+        click_by_text(sb, "span", "skip")
 
-        if click_by_text(sb, "span", "skip"):
-            time.sleep(2)
+        # ---------------------------
+        # SUCCESS → ⭐ 关键补充
+        # ---------------------------
+        if "success" in current_url:
+
+            print("✅ 进入 success 页面")
+
+            if click_by_text(sb, "button", "open") or \
+               click_by_text(sb, "a", "open"):
+
+                print("🚀 已点击 Open，流程完成")
+                time.sleep(5)
+                return True
 
         time.sleep(2)
+
+    print("❌ Linkvertise 超时")
+    return False
 
 
 # ==========================================================
@@ -164,16 +195,13 @@ def run():
         if not server_id:
             return "NO_SERVER"
 
-        server_id = server_id.strip()
-
         print("🎮 Server:", server_id)
 
         server_url = f"https://panel.orihost.com/server/{server_id}"
         sb.open(server_url)
 
         time.sleep(8)
-
-        screenshot(sb, "server_page.png")  # ⭐ 核心截图
+        screenshot(sb, "server_page.png")
 
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
@@ -183,7 +211,6 @@ def run():
             return "NO_RENEW_BTN"
 
         time.sleep(3)
-        screenshot(sb, "after_renew.png")
 
         click_by_text(sb, "button", "linkvertise")
 
@@ -223,7 +250,6 @@ def main():
 📊 *Orihost 自动续期报告*
 
 状态: `{result}`
-
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
 """
 
