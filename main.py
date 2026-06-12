@@ -18,8 +18,17 @@ os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
 # ==========================================================
-# Telegram
+# 工具
 # ==========================================================
+
+def screenshot(sb, name):
+    try:
+        path = f"{SCREENSHOT_DIR}/{int(time.time())}_{name}"
+        sb.save_screenshot(path)
+        print("📸", path)
+    except:
+        pass
+
 
 def tg_send(msg):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -39,47 +48,7 @@ def tg_send(msg):
             timeout=20
         )
     except Exception as e:
-        print("TG msg error:", e)
-
-
-def tg_send_photo(path, caption=None):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not token or not chat:
-        return
-
-    try:
-        with open(path, "rb") as f:
-            requests.post(
-                f"https://api.telegram.org/bot{token}/sendPhoto",
-                data={
-                    "chat_id": chat,
-                    "caption": caption or ""
-                },
-                files={"photo": f},
-                timeout=30
-            )
-    except Exception as e:
-        print("TG photo error:", e)
-
-
-# ==========================================================
-# 工具
-# ==========================================================
-
-def screenshot(sb, name, send=False):
-    try:
-        path = f"{SCREENSHOT_DIR}/{int(time.time())}_{name}"
-        sb.save_screenshot(path)
-        print("📸", path)
-
-        if send:
-            tg_send_photo(path, caption=name)
-
-        return path
-    except:
-        return None
+        print("TG error:", e)
 
 
 def safe_window_handles(sb):
@@ -108,6 +77,10 @@ def extract_server_id(sb):
     return None
 
 
+# ==========================================================
+# 通用点击
+# ==========================================================
+
 def click_by_text(sb, tag, keyword):
     try:
         els = sb.find_elements(tag)
@@ -122,7 +95,7 @@ def click_by_text(sb, tag, keyword):
 
 
 # ==========================================================
-# Linkvertise
+# Linkvertise（完整版）
 # ==========================================================
 
 def handle_linkvertise(sb):
@@ -130,33 +103,50 @@ def handle_linkvertise(sb):
 
     for i in range(80):
 
+        current_url = ""
         try:
             current_url = sb.get_current_url()
         except:
-            current_url = ""
+            pass
 
         print("🌐", current_url)
+
         screenshot(sb, f"lv_{i}.png")
 
+        # ---------------------------
+        # Get Link
+        # ---------------------------
         click_by_text(sb, "button", "get link")
+
+        # ---------------------------
+        # Watch Ads / Continue
+        # ---------------------------
         click_by_text(sb, "div", "watch")
         click_by_text(sb, "button", "continue")
+
+        # ---------------------------
+        # Skip Ad
+        # ---------------------------
         click_by_text(sb, "button", "skip")
         click_by_text(sb, "span", "skip")
 
-        # ⭐ success → open
+        # ---------------------------
+        # SUCCESS → ⭐ 关键补充
+        # ---------------------------
         if "success" in current_url:
-            print("✅ success 页面")
+
+            print("✅ 进入 success 页面")
 
             if click_by_text(sb, "button", "open") or \
                click_by_text(sb, "a", "open"):
 
-                print("🚀 已点击 Open")
+                print("🚀 已点击 Open，流程完成")
                 time.sleep(5)
                 return True
 
         time.sleep(2)
 
+    print("❌ Linkvertise 超时")
     return False
 
 
@@ -183,7 +173,7 @@ def run():
         sb.open(LOGIN_URL)
         time.sleep(5)
 
-        screenshot(sb, "login.png", send=True)
+        screenshot(sb, "login.png")
 
         sb.type(EMAIL_SEL, email)
         sb.type(PASS_SEL, password)
@@ -194,7 +184,7 @@ def run():
                 break
             time.sleep(1)
         else:
-            screenshot(sb, "login_fail.png", send=True)
+            screenshot(sb, "login_fail.png")
             return "LOGIN_FAIL"
 
         print("✅ 登录成功")
@@ -211,20 +201,19 @@ def run():
         sb.open(server_url)
 
         time.sleep(8)
-        screenshot(sb, "server_page.png", send=True)
+        screenshot(sb, "server_page.png")
 
-        body = sb.get_text("body")
-
-        if "Renew Limit Reached" in body:
+        if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
         if not click_by_text(sb, "button", "renew"):
-            screenshot(sb, "renew_fail.png", send=True)
+            screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
         time.sleep(3)
 
         click_by_text(sb, "button", "linkvertise")
+
         time.sleep(5)
 
         handles = safe_window_handles(sb)
@@ -235,7 +224,7 @@ def run():
             except:
                 return "BROWSER_CRASH"
 
-        screenshot(sb, "linkvertise_start.png", send=True)
+        screenshot(sb, "linkvertise_start.png")
 
         handle_linkvertise(sb)
 
