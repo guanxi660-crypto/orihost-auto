@@ -76,42 +76,18 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# Linkvertise 自动流程
+# JS 注入（核心）
 # ==========================================================
 
-def handle_linkvertise(sb):
-    print("🔗 Linkvertise flow...")
+def inject_orihost_js(sb):
+    try:
+        with open("orihost.js", "r", encoding="utf-8") as f:
+            js = f.read()
 
-    for _ in range(40):
-        try:
-            if sb.is_element_visible('button:contains("Get Link")'):
-                sb.click('button:contains("Get Link")')
-                time.sleep(3)
-        except:
-            pass
-
-        try:
-            if sb.is_element_visible('div:contains("Watch Ads")'):
-                sb.click('div:contains("Watch Ads")')
-                time.sleep(2)
-        except:
-            pass
-
-        try:
-            if sb.is_element_visible('button:contains("Continue")'):
-                sb.click('button:contains("Continue")')
-                time.sleep(3)
-        except:
-            pass
-
-        try:
-            if sb.is_element_visible('span:contains("Skip Ad")'):
-                sb.click('span:contains("Skip Ad")')
-                time.sleep(2)
-        except:
-            pass
-
-        time.sleep(3)
+        sb.execute_script(js)
+        print("✅ orihost.js 已注入")
+    except Exception as e:
+        print("❌ JS 注入失败:", e)
 
 
 # ==========================================================
@@ -133,6 +109,9 @@ def run():
         chromium_arg="--no-sandbox,--disable-dev-shm-usage,--disable-gpu"
     ) as sb:
 
+        # =========================
+        # 1. 登录
+        # =========================
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
         time.sleep(5)
@@ -143,8 +122,7 @@ def run():
         sb.type(PASS_SEL, password)
         sb.click(SUBMIT_SEL)
 
-        time.sleep(5)
-
+        # 等待登录
         for _ in range(30):
             if is_logged_in(sb):
                 break
@@ -155,6 +133,9 @@ def run():
 
         print("✅ 登录成功")
 
+        # =========================
+        # 2. 获取 Server ID
+        # =========================
         time.sleep(3)
         server_id = extract_server_id(sb)
 
@@ -167,9 +148,15 @@ def run():
         sb.open(server_url)
         time.sleep(5)
 
+        # =========================
+        # 3. 检查限制
+        # =========================
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
+        # =========================
+        # 4. 点击 Renew
+        # =========================
         try:
             sb.click('button:contains("Renew")')
             time.sleep(3)
@@ -177,6 +164,9 @@ def run():
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
+        # =========================
+        # 5. 打开 Linkvertise
+        # =========================
         try:
             sb.click('button:contains("Open Linkvertise")')
         except:
@@ -184,7 +174,9 @@ def run():
 
         time.sleep(5)
 
-        # ✅ 安全切换窗口
+        # =========================
+        # 6. 切换窗口
+        # =========================
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
@@ -193,9 +185,19 @@ def run():
             except:
                 return "BROWSER_CRASH"
 
-        handle_linkvertise(sb)
+            # =========================
+            # 🚀 注入 JS 接管 Linkvertise
+            # =========================
+            inject_orihost_js(sb)
 
-        # 回主页面
+            print("🚀 Linkvertise 已交给 JS 自动处理")
+
+            # 给 JS 足够运行时间（非常重要）
+            time.sleep(180)
+
+        # =========================
+        # 7. 回主页面
+        # =========================
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
@@ -225,7 +227,6 @@ def main():
 OK = 成功续期
 LIMIT = 达到续期上限
 LOGIN_FAIL = 登录失败
-CF_FAIL = CF验证失败
 BROWSER_CRASH = 浏览器崩溃
 """
 
