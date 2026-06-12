@@ -144,28 +144,60 @@ def run():
 
         print("🎮 Server:", server_id)
 
+        # =========================
+        # 3. 打开 Server 页面
+        # =========================
         server_url = f"https://panel.orihost.com/server/{server_id}"
         sb.open(server_url)
         time.sleep(5)
 
         # =========================
-        # 3. 检查限制
+        # 4. 检测页面错误
         # =========================
-        if "Renew Limit Reached" in sb.get_text("body"):
-            return "LIMIT"
+        body = sb.get_text("body")
+
+        if "Something went wrong" in body:
+            print("⚠️ 页面异常，尝试刷新...")
+
+            sb.refresh()
+            time.sleep(5)
+
+            body = sb.get_text("body")
+
+            if "Something went wrong" in body:
+                return "PAGE_ERROR"
 
         # =========================
-        # 4. 点击 Renew
+        # 5. 等待 UI 加载
         # =========================
-        try:
-            sb.click('button:contains("Renew")')
-            time.sleep(3)
-        except:
-            screenshot(sb, "renew_fail.png")
+        sb.wait_for_element("body", timeout=30)
+        time.sleep(3)
+
+        # =========================
+        # 6. 等待 Renew 按钮出现
+        # =========================
+        renew_btn_ok = False
+
+        for _ in range(25):
+            try:
+                if sb.is_element_visible('button:contains("Renew")'):
+                    renew_btn_ok = True
+                    break
+            except:
+                pass
+            time.sleep(1)
+
+        if not renew_btn_ok:
             return "NO_RENEW_BTN"
 
         # =========================
-        # 5. 打开 Linkvertise
+        # 7. 点击 Renew
+        # =========================
+        sb.click('button:contains("Renew")')
+        time.sleep(3)
+
+        # =========================
+        # 8. 打开 Linkvertise
         # =========================
         try:
             sb.click('button:contains("Open Linkvertise")')
@@ -175,28 +207,29 @@ def run():
         time.sleep(5)
 
         # =========================
-        # 6. 切换窗口
+        # 9. 切换窗口
         # =========================
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
+
             try:
                 sb.switch_to_window(1)
             except:
                 return "BROWSER_CRASH"
 
             # =========================
-            # 🚀 注入 JS 接管 Linkvertise
+            # 🚀 注入 JS（接管 Linkvertise）
             # =========================
             inject_orihost_js(sb)
 
             print("🚀 Linkvertise 已交给 JS 自动处理")
 
-            # 给 JS 足够运行时间（非常重要）
+            # 给 JS 足够运行时间
             time.sleep(180)
 
         # =========================
-        # 7. 回主页面
+        # 10. 回主页面
         # =========================
         try:
             sb.switch_to_window(0)
