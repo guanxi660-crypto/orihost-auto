@@ -152,24 +152,49 @@ def run():
         sb.open(server_url)
 
         sb.wait_for_element("body", timeout=30)
-        time.sleep(6)
+        time.sleep(10)
 
         body = sb.get_text("body")
 
-        # =========================
-        # 4. 页面错误处理
-        # =========================
         if "Something went wrong" in body:
 
-            print("⚠️ 页面异常，重新加载...")
+            print("⚠️ 页面异常")
 
-            sb.open(server_url)
-            time.sleep(8)
+            # 当前 URL
+            print("URL:", sb.get_current_url())
 
-            body = sb.get_text("body")
+            # 保存截图
+            try:
+                sb.save_screenshot("page_error.png")
+            except Exception as e:
+                print("screenshot error:", e)
 
-            if "Something went wrong" in body:
-                return "PAGE_ERROR"
+            # 保存源码
+            try:
+                with open("page_error.html", "w", encoding="utf-8") as f:
+                    f.write(sb.get_page_source())
+            except Exception as e:
+                print("html save error:", e)
+
+            # 输出 Cookie 名称
+            try:
+                cookies = sb.driver.get_cookies()
+                print("Cookies:")
+                for c in cookies:
+                    print(" -", c.get("name"))
+            except Exception as e:
+                print("cookie error:", e)
+
+            # 浏览器日志
+            try:
+                logs = sb.driver.get_log("browser")
+                print("Browser logs:")
+                for log in logs[-20:]:
+                    print(log)
+            except Exception as e:
+                print("log error:", e)
+
+            return "PAGE_ERROR"
 
         # =========================
         # 5. 检查登录状态是否丢失
@@ -193,8 +218,9 @@ def run():
                 if sb.is_element_visible('button:contains("Renew")'):
                     renew_btn_ok = True
                     break
-            except:
+            except Exception:
                 pass
+
             time.sleep(1)
 
         if not renew_btn_ok:
@@ -211,7 +237,7 @@ def run():
         # =========================
         try:
             sb.click('button:contains("Open Linkvertise")')
-        except:
+        except Exception:
             pass
 
         time.sleep(5)
@@ -225,7 +251,7 @@ def run():
 
             try:
                 sb.switch_to_window(1)
-            except:
+            except Exception:
                 return "BROWSER_CRASH"
 
             # =========================
@@ -244,7 +270,7 @@ def run():
         try:
             sb.switch_to_window(0)
             sb.open(HOME_URL)
-        except:
+        except Exception:
             return "BROWSER_CRASH"
 
         time.sleep(5)
