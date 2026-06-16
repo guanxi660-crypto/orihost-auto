@@ -4,7 +4,6 @@ import os
 import time
 from seleniumbase import SB
 
-
 LOGIN_URL = "https://panel.orihost.com/auth/login"
 
 EMAIL_SEL = 'input[name="username"]'
@@ -37,69 +36,62 @@ def extract_server_id(sb):
     for s in spans:
         txt = s.text.strip()
         if txt.startswith("#"):
-            return txt.replace("#", "").strip()  # ✅ 修复空格
+            return txt.replace("#", "").strip()
     return None
 
 
 # ==========================================================
-# 💀 杀广告
+# 💀 超暴力点击（核心）
 # ==========================================================
 
-def kill_ads(sb):
-
-    print("💀 清理广告")
-
-    sb.execute_script("""
-    (() => {
-
-        document.querySelectorAll('[id*="ad"], [class*="ad"], iframe')
-            .forEach(el => el.remove());
-
-        document.querySelectorAll('*').forEach(el => {
-            const z = window.getComputedStyle(el).zIndex;
-            if (z && parseInt(z) > 9999) {
-                el.remove();
-            }
-        });
-
-        const words = ["close", "continue", "tap"];
-
-        document.querySelectorAll('*').forEach(el => {
-            if (!el.innerText) return;
-
-            const txt = el.innerText.toLowerCase();
-
-            for (const w of words) {
-                if (txt.includes(w)) {
-                    el.click();
-                }
-            }
-        });
-
-        return true;
-
-    })();
-    """)
-
-
-# ==========================================================
-# 💀 点击（修复 return）
-# ==========================================================
-
-def click_text(sb, text):
+def extreme_click(sb, keyword):
 
     return sb.execute_script(f"""
     (() => {{
 
+        function isVisible(el) {{
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden';
+        }}
+
+        function killOverlay() {{
+            document.querySelectorAll('div,iframe').forEach(el => {{
+                const cls = (el.className || '').toString().toLowerCase();
+                if (cls.includes('overlay') || cls.includes('mask') || cls.includes('modal')) {{
+                    el.style.display = 'none';
+                }}
+            }});
+        }}
+
+        function click(el) {{
+            if (!el) return false;
+
+            el.style.pointerEvents = 'auto';
+            el.style.zIndex = 999999;
+
+            killOverlay();
+
+            el.scrollIntoView({{block:'center'}});
+
+            try {{ el.click(); }} catch(e){{}}
+
+            const evt = {{ bubbles:true, cancelable:true, view:window }};
+            el.dispatchEvent(new MouseEvent('mousedown', evt));
+            el.dispatchEvent(new MouseEvent('mouseup', evt));
+            el.dispatchEvent(new MouseEvent('click', evt));
+
+            return true;
+        }}
+
         const els = document.querySelectorAll('*');
 
         for (const el of els) {{
-            if (el.innerText &&
-                el.innerText.toLowerCase().includes("{text.lower()}")) {{
+            if (!el.innerText) continue;
 
-                el.scrollIntoView({{block:'center'}});
-                el.click();
-                return true;
+            const txt = el.innerText.toLowerCase();
+
+            if (txt.includes("{keyword.lower()}") && isVisible(el)) {{
+                return click(el);
             }}
         }}
 
@@ -110,44 +102,51 @@ def click_text(sb, text):
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise（修复版）
+# 💀 自动关广告（加强版）
+# ==========================================================
+
+def auto_close_ads(sb):
+
+    sb.execute_script("""
+    (() => {
+
+        const words = ["close", "continue", "skip", "tap"];
+
+        document.querySelectorAll('*').forEach(el => {
+
+            if (!el.innerText) return;
+
+            const txt = el.innerText.toLowerCase();
+
+            for (const w of words) {
+                if (txt.includes(w)) {
+                    try { el.click(); } catch(e){}
+                }
+            }
+        });
+
+    })();
+    """)
+
+
+# ==========================================================
+# 🎯 点击 Open Linkvertise（终极版）
 # ==========================================================
 
 def click_open_linkvertise(sb):
 
-    print("🎯 点击 Open Linkvertise")
+    print("🎯 强力点击 Open Linkvertise")
 
-    for _ in range(20):
+    for _ in range(25):
 
-        kill_ads(sb)
+        auto_close_ads(sb)
 
-        result = sb.execute_script("""
-        (() => {
+        if extreme_click(sb, "open linkvertise"):
+            print("✅ 命中 Open Linkvertise")
+            return True
 
-            const dialog = document.querySelector('[role="dialog"]');
-
-            if (dialog) {
-
-                const buttons = dialog.querySelectorAll('button');
-
-                for (const btn of buttons) {
-
-                    if (btn.innerText &&
-                        btn.innerText.toLowerCase().includes('open')) {
-
-                        btn.click();
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-
-        })();
-        """)
-
-        if result:
-            print("✅ 点击成功 Open Linkvertise")
+        if extreme_click(sb, "open"):
+            print("✅ 命中 Open")
             return True
 
         time.sleep(1)
@@ -191,19 +190,24 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        # 💀 清广告
-        kill_ads(sb)
+        # 💀 自动关广告
+        auto_close_ads(sb)
         time.sleep(2)
 
-        # 1️⃣ Renew
-        print("🔍 点击 Renew")
-        click_text(sb, "renew")
+        # 1️⃣ Renew（暴力点击）
+        print("🔍 强力点击 Renew")
 
-        time.sleep(3)
+        for _ in range(5):
+            if extreme_click(sb, "renew"):
+                break
+            time.sleep(1)
+
         screenshot(sb, "after_renew.png")
 
-        # 💀 再清
-        kill_ads(sb)
+        time.sleep(3)
+
+        # 💀 再清广告
+        auto_close_ads(sb)
 
         # 2️⃣ Open Linkvertise
         if not click_open_linkvertise(sb):
