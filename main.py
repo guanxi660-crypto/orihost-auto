@@ -45,7 +45,6 @@ def extract_server_id(sb):
 # ==========================================================
 
 def extreme_click(sb, keyword):
-
     return sb.execute_script(f"""
     (() => {{
 
@@ -91,7 +90,7 @@ def extreme_click(sb, keyword):
 
 
 # ==========================================================
-# 💀 点击 iframe 里的 Close（核心）
+# 💀 点击 iframe 里的 Close（已修复）
 # ==========================================================
 
 def click_iframe_close(sb):
@@ -100,7 +99,7 @@ def click_iframe_close(sb):
 
     for idx, iframe in enumerate(iframes):
         try:
-            sb.switch_to.frame(iframe)
+            sb.switch_to_frame(iframe)
 
             clicked = sb.execute_script("""
             (() => {
@@ -134,14 +133,15 @@ def click_iframe_close(sb):
             })();
             """)
 
-            sb.switch_to.default_content()
+            sb.switch_to_default_content()
 
             if clicked:
                 print(f"✅ iframe[{idx}] Close 已点击")
                 return True
 
-        except:
-            sb.switch_to.default_content()
+        except Exception as e:
+            print(f"⚠️ iframe[{idx}] 失败:", e)
+            sb.switch_to_default_content()
 
     return False
 
@@ -151,7 +151,6 @@ def click_iframe_close(sb):
 # ==========================================================
 
 def clean_ads(sb, rounds=5):
-
     for _ in range(rounds):
         click_iframe_close(sb)
         time.sleep(1)
@@ -218,7 +217,6 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        # 💀 关键：先清 iframe 广告
         print("💀 初始清广告")
         clean_ads(sb, 5)
 
@@ -241,7 +239,6 @@ def run():
 
         time.sleep(3)
 
-        # 💀 再清一次（非常关键）
         print("💀 Renew 后清广告")
         clean_ads(sb, 5)
 
@@ -255,10 +252,9 @@ def run():
 
         time.sleep(5)
 
-        # 切新窗口
         handles = sb.driver.window_handles
         if len(handles) > 1:
-            sb.switch_to.window(handles[-1])
+            sb.switch_to_window(handles[-1])
 
         screenshot(sb, "linkvertise.png")
 
