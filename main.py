@@ -41,7 +41,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 超暴力点击（核心）
+# 💀 超强点击
 # ==========================================================
 
 def extreme_click(sb, keyword):
@@ -54,22 +54,11 @@ def extreme_click(sb, keyword):
             return style.display !== 'none' && style.visibility !== 'hidden';
         }}
 
-        function killOverlay() {{
-            document.querySelectorAll('div,iframe').forEach(el => {{
-                const cls = (el.className || '').toString().toLowerCase();
-                if (cls.includes('overlay') || cls.includes('mask') || cls.includes('modal')) {{
-                    el.style.display = 'none';
-                }}
-            }});
-        }}
-
         function click(el) {{
             if (!el) return false;
 
             el.style.pointerEvents = 'auto';
             el.style.zIndex = 999999;
-
-            killOverlay();
 
             el.scrollIntoView({{block:'center'}});
 
@@ -102,44 +91,83 @@ def extreme_click(sb, keyword):
 
 
 # ==========================================================
-# 💀 自动关广告（加强版）
+# 💀 点击 iframe 里的 Close（核心）
 # ==========================================================
 
-def auto_close_ads(sb):
+def click_iframe_close(sb):
 
-    sb.execute_script("""
-    (() => {
+    iframes = sb.find_elements("iframe")
 
-        const words = ["close", "continue", "skip", "tap"];
+    for idx, iframe in enumerate(iframes):
+        try:
+            sb.switch_to.frame(iframe)
 
-        document.querySelectorAll('*').forEach(el => {
+            clicked = sb.execute_script("""
+            (() => {
 
-            if (!el.innerText) return;
+                const keys = ["close", "×", "skip"];
 
-            const txt = el.innerText.toLowerCase();
+                const els = document.querySelectorAll("*");
 
-            for (const w of words) {
-                if (txt.includes(w)) {
-                    try { el.click(); } catch(e){}
+                for (const el of els) {
+
+                    const txt = (el.innerText || "").toLowerCase();
+
+                    for (const k of keys) {
+                        if (txt.includes(k)) {
+
+                            el.style.zIndex = 999999;
+                            el.style.pointerEvents = 'auto';
+
+                            try { el.click(); } catch(e){}
+
+                            const evt = { bubbles:true, cancelable:true };
+                            el.dispatchEvent(new MouseEvent('click', evt));
+
+                            return true;
+                        }
+                    }
                 }
-            }
-        });
 
-    })();
-    """)
+                return false;
+
+            })();
+            """)
+
+            sb.switch_to.default_content()
+
+            if clicked:
+                print(f"✅ iframe[{idx}] Close 已点击")
+                return True
+
+        except:
+            sb.switch_to.default_content()
+
+    return False
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise（终极版）
+# 💀 多次清广告
+# ==========================================================
+
+def clean_ads(sb, rounds=5):
+
+    for _ in range(rounds):
+        click_iframe_close(sb)
+        time.sleep(1)
+
+
+# ==========================================================
+# 🎯 点击 Open Linkvertise
 # ==========================================================
 
 def click_open_linkvertise(sb):
 
-    print("🎯 强力点击 Open Linkvertise")
+    print("🎯 点击 Open Linkvertise")
 
-    for _ in range(25):
+    for _ in range(20):
 
-        auto_close_ads(sb)
+        clean_ads(sb, 1)
 
         if extreme_click(sb, "open linkvertise"):
             print("✅ 命中 Open Linkvertise")
@@ -190,35 +218,47 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        # 💀 自动关广告
-        auto_close_ads(sb)
-        time.sleep(2)
+        # 💀 关键：先清 iframe 广告
+        print("💀 初始清广告")
+        clean_ads(sb, 5)
 
-        # 1️⃣ Renew（暴力点击）
-        print("🔍 强力点击 Renew")
+        # ==================================================
+        # 1️⃣ 点击 Renew
+        # ==================================================
+
+        print("🔍 点击 Renew")
 
         for _ in range(5):
+            clean_ads(sb, 1)
+
             if extreme_click(sb, "renew"):
+                print("✅ Renew 成功")
                 break
+
             time.sleep(1)
 
         screenshot(sb, "after_renew.png")
 
         time.sleep(3)
 
-        # 💀 再清广告
-        auto_close_ads(sb)
+        # 💀 再清一次（非常关键）
+        print("💀 Renew 后清广告")
+        clean_ads(sb, 5)
 
+        # ==================================================
         # 2️⃣ Open Linkvertise
+        # ==================================================
+
         if not click_open_linkvertise(sb):
             screenshot(sb, "open_lv_fail.png")
             return "NO_OPEN_LINKVERTISE"
 
         time.sleep(5)
 
+        # 切新窗口
         handles = sb.driver.window_handles
         if len(handles) > 1:
-            sb.switch_to_window(handles[-1])
+            sb.switch_to.window(handles[-1])
 
         screenshot(sb, "linkvertise.png")
 
