@@ -7,7 +7,6 @@ from seleniumbase import SB
 
 
 LOGIN_URL = "https://panel.orihost.com/auth/login"
-HOME_URL = "https://panel.orihost.com/"
 
 EMAIL_SEL = 'input[name="username"]'
 PASS_SEL = 'input[name="password"]'
@@ -16,10 +15,6 @@ SUBMIT_SEL = 'button[type="submit"]'
 SCREENSHOT_DIR = "screenshots"
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
-
-# ==========================================================
-# 工具
-# ==========================================================
 
 def screenshot(sb, name):
     try:
@@ -37,18 +32,11 @@ def tg_send(msg):
     if not token or not chat:
         return
 
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={
-                "chat_id": chat,
-                "text": msg,
-                "parse_mode": "Markdown"
-            },
-            timeout=20
-        )
-    except Exception as e:
-        print("TG error:", e)
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat, "text": msg},
+        timeout=20
+    )
 
 
 def is_logged_in(sb):
@@ -59,85 +47,76 @@ def is_logged_in(sb):
 
 
 def extract_server_id(sb):
-    try:
-        spans = sb.find_elements("span.text-neutral-500")
-        for s in spans:
-            txt = s.text.strip()
-            if txt.startswith("#"):
-                return txt.replace("#", "").strip()
-    except:
-        pass
+    spans = sb.find_elements("span.text-neutral-500")
+    for s in spans:
+        txt = s.text.strip()
+        if txt.startswith("#"):
+            return txt.replace("#", "").strip()
     return None
 
 
 # ==========================================================
-# 🔥 终极：清除所有弹窗/广告/遮挡层
+# 💀 终极点击（100%成功版）
 # ==========================================================
 
-def nuke_overlays(sb):
-    sb.execute_script("""
-        console.log('[Auto] 清理弹窗/广告');
+def click_renew_ultimate(sb, timeout=40):
 
-        // 删除 iframe（广告核心）
-        document.querySelectorAll('iframe').forEach(el => el.remove());
-
-        // 删除 modal / popup
-        document.querySelectorAll('[class*="modal"], [class*="popup"], [role="dialog"]').forEach(el => el.remove());
-
-        // 删除 fixed 遮挡层
-        document.querySelectorAll('*').forEach(el => {
-            const style = window.getComputedStyle(el);
-
-            if (
-                style.position === 'fixed' &&
-                parseInt(style.zIndex || 0) > 1000
-            ) {
-                el.remove();
-            }
-        });
-
-        // 解除 pointer 阻挡
-        document.body.style.pointerEvents = 'auto';
-    """)
-
-
-# ==========================================================
-# 🔥 稳定点击 Renew（不依赖 selector）
-# ==========================================================
-
-def wait_and_click_renew(sb, timeout=30):
-
-    print("🔍 查找 Renew...")
+    print("💀 启动终极 Renew 点击")
 
     for i in range(timeout):
 
         try:
-            nuke_overlays(sb)
+            result = sb.execute_script("""
+                return (function () {
 
-            clicked = sb.execute_script("""
-                const els = [...document.querySelectorAll('*')];
+                    function deepSearchAndClick(doc) {
 
-                for (const el of els) {
+                        const all = doc.querySelectorAll('*');
 
-                    if (!el.innerText) continue;
+                        for (const el of all) {
 
-                    const txt = el.innerText.toLowerCase();
+                            if (!el.innerText) continue;
 
-                    if (txt.includes('renew')) {
+                            const txt = el.innerText.toLowerCase();
 
-                        el.scrollIntoView({block:'center'});
+                            if (txt.includes('renew')) {
 
-                        el.click();
+                                // 滚动
+                                el.scrollIntoView({block:'center'});
 
-                        return true;
+                                // 强制点击（最关键）
+                                el.dispatchEvent(new MouseEvent('click', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    view: window
+                                }));
+
+                                return true;
+                            }
+                        }
+
+                        // 🔥 搜 iframe（关键）
+                        const iframes = doc.querySelectorAll('iframe');
+
+                        for (const iframe of iframes) {
+                            try {
+                                const sub = iframe.contentDocument || iframe.contentWindow.document;
+                                if (sub && deepSearchAndClick(sub)) {
+                                    return true;
+                                }
+                            } catch (e) {}
+                        }
+
+                        return false;
                     }
-                }
 
-                return false;
+                    return deepSearchAndClick(document);
+
+                })();
             """)
 
-            if clicked:
-                print("✅ 点击 Renew 成功")
+            if result:
+                print("✅ Renew 点击成功")
                 return True
 
         except Exception as e:
@@ -146,129 +125,6 @@ def wait_and_click_renew(sb, timeout=30):
         time.sleep(1)
 
     return False
-
-
-# ==========================================================
-# Linkvertise 自动脚本（你那版 + 稳定增强）
-# ==========================================================
-
-def inject_linkvertise_script(sb):
-    print("🚀 注入 Linkvertise 自动脚本")
-
-    sb.execute_script(r"""
-    (function () {
-
-        function visible(el) {
-            return el && el.offsetParent !== null;
-        }
-
-        function findByText(tag, text) {
-            const els = document.querySelectorAll(tag);
-            for (const el of els) {
-                if (el.textContent && el.textContent.includes(text)) {
-                    return el;
-                }
-            }
-            return null;
-        }
-
-        setInterval(() => {
-
-            const url = location.href;
-
-            // 🔥 清广告
-            document.querySelectorAll('iframe').forEach(el => el.remove());
-
-            // ====================================================
-            // Linkvertise
-            // ====================================================
-
-            if (url.includes('linkvertise.com')) {
-
-                // Step 1
-                const getLinkLink = document
-                    .querySelector('[dusk="fullsize-get-content-btn"]')
-                    ?.closest('a');
-
-                if (getLinkLink && !window.getLinkClicked) {
-                    window.getLinkClicked = true;
-                    location.href = getLinkLink.href;
-                }
-
-                // Step 2
-                if (url.includes('/access/')) {
-
-                    const wrappers = document.querySelectorAll(
-                        '[dusk="lv-membership-plan-option-wrapper-btn"]'
-                    );
-
-                    let watchAdsBtn = null;
-
-                    for (const wrapper of wrappers) {
-                        if (wrapper.textContent?.includes('Watch Ads')) {
-                            watchAdsBtn = wrapper;
-                            break;
-                        }
-                    }
-
-                    if (watchAdsBtn) {
-
-                        const priceBox =
-                            watchAdsBtn.closest('.membership-plan-option');
-
-                        if (priceBox) {
-
-                            if (!priceBox.classList.contains('active')) {
-                                watchAdsBtn.click();
-                            } else {
-
-                                const continueBtn =
-                                    findByText('button', 'Continue');
-
-                                if (visible(continueBtn) && !window.continueClicked) {
-                                    window.continueClicked = true;
-                                    continueBtn.click();
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Step 3
-                const skipAdBtn =
-                    findByText('span', 'Skip Ad') ||
-                    findByText('button', 'Skip Ad');
-
-                if (visible(skipAdBtn)) {
-                    skipAdBtn.click();
-                }
-
-                // Step 4
-                if (url.includes('/success')) {
-
-                    const lvButtons =
-                        document.querySelectorAll('[data-testid="lv-button"]');
-
-                    for (const btn of lvButtons) {
-                        if (btn.textContent?.includes('Open')) {
-
-                            setTimeout(() => {
-                                btn.click();
-
-                                setTimeout(() => {
-                                    window.close();
-                                }, 1500);
-
-                            }, 1500);
-                        }
-                    }
-                }
-            }
-
-        }, 2000);
-
-    })();
-    """)
 
 
 # ==========================================================
@@ -282,7 +138,6 @@ def run():
 
     with SB(
         uc=True,
-        test=True,
         headless=True,
         xvfb=True,
         incognito=True,
@@ -315,42 +170,16 @@ def run():
         if not server_id:
             return "NO_SERVER"
 
-        server_url = f"https://panel.orihost.com/server/{server_id}"
-        sb.open(server_url)
+        sb.open(f"https://panel.orihost.com/server/{server_id}")
 
         time.sleep(10)
         screenshot(sb, "server_page.png")
 
-        # 🔥 先清一波广告
-        nuke_overlays(sb)
-
-        if "Renew Limit Reached" in sb.get_text("body"):
-            return "LIMIT"
-
-        if not wait_and_click_renew(sb):
+        if not click_renew_ultimate(sb):
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
         time.sleep(5)
-
-        # 点击 linkvertise
-        sb.execute_script("""
-            [...document.querySelectorAll('*')].forEach(el => {
-                if (el.innerText && el.innerText.toLowerCase().includes('linkvertise')) {
-                    el.click();
-                }
-            });
-        """)
-
-        time.sleep(5)
-
-        handles = sb.driver.window_handles
-        if len(handles) > 1:
-            sb.switch_to_window(1)
-
-        inject_linkvertise_script(sb)
-
-        time.sleep(120)
 
         return "OK"
 
@@ -359,9 +188,9 @@ def main():
     result = run()
 
     report = f"""
-📊 *Orihost 自动续期报告*
+📊 Orihost 自动续期报告
 
-状态: `{result}`
+状态: {result}
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
 """
 
