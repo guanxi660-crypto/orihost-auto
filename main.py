@@ -222,7 +222,7 @@ def run():
     email = os.getenv("ORIHOST_EMAIL")
     password = os.getenv("ORIHOST_PASSWORD")
 
-    with SB(uc=True, headless=True, xvfb=True) as sb:
+    with SB(uc=True, headless=False, xvfb=True) as sb:
 
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
