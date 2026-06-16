@@ -41,30 +41,21 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 终极清广告（新版）
+# 💀 清广告（终极）
 # ==========================================================
 
 def nuke_ads(sb):
-
     sb.execute_script("""
-    // 删除 iframe
     document.querySelectorAll('iframe').forEach(el => el.remove());
 
-    // 删除遮罩层
     document.querySelectorAll('div,section').forEach(el => {
         const style = window.getComputedStyle(el);
-
-        if (
-            style.position === 'fixed' &&
-            parseInt(style.zIndex) > 1000
-        ) {
+        if (style.position === 'fixed' && parseInt(style.zIndex) > 1000) {
             el.remove();
         }
     });
 
-    // 解锁点击
     document.body.style.pointerEvents = 'auto';
-
     document.querySelectorAll('*').forEach(el=>{
         el.style.pointerEvents='auto';
     });
@@ -72,68 +63,86 @@ def nuke_ads(sb):
 
 
 # ==========================================================
-# 💀 强力点击（升级版）
+# 💀 强点击
 # ==========================================================
 
 def extreme_click(sb, keyword):
-
     return sb.execute_script(f"""
     (() => {{
-
         const els = document.querySelectorAll('*');
-
         for (const el of els) {{
-
             const txt = (el.innerText || "").toLowerCase();
-
             if (txt.includes("{keyword.lower()}")) {{
-
                 el.scrollIntoView({{block:'center'}});
-
                 try {{ el.click(); }} catch(e){{}}
-
-                el.dispatchEvent(new MouseEvent('click', {{
-                    bubbles:true,
-                    cancelable:true
-                }}));
-
+                el.dispatchEvent(new MouseEvent('click', {{bubbles:true}}));
                 return true;
             }}
         }}
-
         return false;
-
     }})();
     """)
 
 
 # ==========================================================
-# 🎯 点击 Linkvertise（强化）
+# 🚀 注入 Linkvertise 自动脚本
 # ==========================================================
 
-def click_open_linkvertise(sb):
+def inject_linkvertise_bot(sb):
 
-    print("🎯 开始点击 Linkvertise")
+    print("🤖 注入 Linkvertise 自动处理")
 
-    for i in range(30):
+    sb.execute_script("""
+    (function(){
 
-        nuke_ads(sb)
+        function findByText(tag, text) {
+            return Array.from(document.querySelectorAll(tag))
+                .find(el => el.innerText && el.innerText.includes(text));
+        }
 
-        if extreme_click(sb, "open linkvertise"):
-            print("✅ 命中 Open Linkvertise")
-            return True
+        function click(el){
+            if(!el) return;
+            el.click();
+            el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+        }
 
-        if extreme_click(sb, "linkvertise"):
-            print("✅ 命中 Linkvertise")
-            return True
+        setInterval(()=>{
 
-        if extreme_click(sb, "open"):
-            print("✅ 命中 Open")
-            return True
+            try{
+                const url = location.href;
 
-        time.sleep(1)
+                // Get Link
+                let btn = findByText('button','Get Link') || findByText('a','Get Link');
+                if(btn) click(btn);
 
-    return False
+                // Watch Ads
+                if(url.includes('/access/')){
+                    let watch = findByText('div','Watch Ads');
+                    if(watch) click(watch);
+
+                    let cont = findByText('button','Continue');
+                    if(cont) click(cont);
+                }
+
+                // Skip
+                let skip = findByText('button','Skip Ad');
+                if(skip) click(skip);
+
+                // Success
+                if(url.includes('/success')){
+                    let open = findByText('button','Open');
+                    if(open){
+                        click(open);
+                        setTimeout(()=>window.close(),2000);
+                    }
+                }
+
+            }catch(e){}
+
+        },2000);
+
+    })();
+    """)
 
 
 # ==========================================================
@@ -172,50 +181,48 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        print("💀 初始清广告")
         for _ in range(5):
             nuke_ads(sb)
             time.sleep(1)
 
-        # ==================================================
-        # 点击 Renew
-        # ==================================================
-
+        # Renew
         print("🔍 点击 Renew")
-
         for _ in range(10):
             nuke_ads(sb)
-
             if extreme_click(sb, "renew"):
                 print("✅ Renew 成功")
                 break
-
             time.sleep(1)
 
         screenshot(sb, "after_renew.png")
 
         time.sleep(3)
 
-        print("💀 Renew 后清广告")
         for _ in range(5):
             nuke_ads(sb)
             time.sleep(1)
 
-        # ==================================================
-        # Linkvertise
-        # ==================================================
-
-        if not click_open_linkvertise(sb):
-            screenshot(sb, "open_lv_fail.png")
-            return "NO_OPEN_LINKVERTISE"
+        # Open
+        print("🎯 点击 Open")
+        extreme_click(sb, "open")
 
         time.sleep(5)
 
-        handles = sb.driver.window_handles
-        if len(handles) > 1:
-            sb.switch_to_window(handles[-1])
+        # 👇 关键：尝试切窗口（防炸）
+        try:
+            handles = sb.driver.window_handles
+            if len(handles) > 1:
+                sb.switch_to_window(handles[-1])
+        except:
+            print("⚠️ 浏览器已跳转或关闭，继续执行")
 
-        screenshot(sb, "linkvertise.png")
+        # 👇 注入 Linkvertise 自动处理
+        inject_linkvertise_bot(sb)
+
+        print("⏳ 等待 Linkvertise 自动完成...")
+        time.sleep(30)
+
+        screenshot(sb, "final.png")
 
         return "OK"
 
