@@ -3,11 +3,6 @@
 import os
 import time
 from seleniumbase import SB
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
 
 LOGIN_URL = "https://panel.orihost.com/auth/login"
 
@@ -19,9 +14,9 @@ SCREENSHOT_DIR = "screenshots"
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
-# =========================
+# ==========================================================
 # 工具
-# =========================
+# ==========================================================
 
 def screenshot(sb, name):
     path = f"{SCREENSHOT_DIR}/{int(time.time())}_{name}"
@@ -45,84 +40,221 @@ def extract_server_id(sb):
     return None
 
 
-# =========================
-# 更稳定点击
-# =========================
+# ==========================================================
+# 🚫 safe cleanup
+# ==========================================================
 
-def safe_click(sb, css, text=None, timeout=10):
-    """
-    统一稳定点击：
-    - wait clickable
-    - scroll into view
-    - ActionChains click（模拟真实用户）
-    """
-
-    try:
-        if text:
-            el = sb.find_element(f"{css}:contains({text})")
-        else:
-            el = sb.find_element(css)
-
-        sb.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
-        time.sleep(0.3)
-
-        ActionChains(sb.driver).move_to_element(el).pause(0.2).click(el).perform()
-        return True
-
-    except Exception as e:
-        print("❌ click failed:", css, e)
-        return False
+def clean_ads_once(sb):
+    sb.execute_script("""
+        (() => {
+            document.querySelectorAll('iframe').forEach(e => e.remove());
+        })();
+    """)
 
 
-def click_renew(sb):
-    buttons = sb.find_elements("button")
-    for b in buttons:
+# ==========================================================
+# 🎯 Renew
+# ==========================================================
+
+def click_real_renew(sb):
+
+    return sb.execute_script("""
+    (() => {
+        const btns = document.querySelectorAll('button');
+
+        for (const b of btns) {
+            if ((b.innerText || '').includes('Renew')) {
+                b.scrollIntoView({block:'center'});
+                b.click();
+                return true;
+            }
+        }
+        return false;
+    })();
+    """)
+
+
+# ==========================================================
+# 🎯 modal detect
+# ==========================================================
+
+def wait_modal(sb):
+
+    for _ in range(25):
+
+        found = sb.execute_script("""
+        (() => {
+            return !!(
+                document.querySelector('[role="dialog"]') ||
+                document.querySelector('div[class*="fixed"]')
+            );
+        })();
+        """)
+
+        if found:
+            print("✅ 弹窗出现")
+            return True
+
+        time.sleep(1)
+
+    return False
+
+
+# ==========================================================
+# 💀 超级真实点击（最终版）
+# ==========================================================
+
+def human_level_click(sb, text):
+
+    return sb.execute_script(f"""
+    (() => {{
+
+        const el = [...document.querySelectorAll('button')]
+            .find(b => (b.innerText || '').includes("{text}"));
+
+        if (!el) return false;
+
+        el.scrollIntoView({{block:'center'}});
+
+        const rect = el.getBoundingClientRect();
+
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const realTarget = document.elementFromPoint(x, y);
+
+        if (!realTarget) return false;
+
+        realTarget.focus();
+
+        const opts = {{
+            bubbles: true,
+            cancelable: true,
+            view: window
+        }};
+
+        // 🔥 关键：完整 pointer chain
+        realTarget.dispatchEvent(new PointerEvent('pointerover', opts));
+        realTarget.dispatchEvent(new PointerEvent('pointerenter', opts));
+        realTarget.dispatchEvent(new PointerEvent('pointerdown', opts));
+        realTarget.dispatchEvent(new MouseEvent('mousedown', opts));
+        realTarget.dispatchEvent(new MouseEvent('mouseup', opts));
+        realTarget.dispatchEvent(new MouseEvent('click', opts));
+
+        // fallback native
+        if (realTarget.click) realTarget.click();
+
+        return true;
+
+    }})();
+    """)
+
+
+# ==========================================================
+# 🎯 Linkvertise click + strict verification
+# ==========================================================
+
+def click_modal_open(sb):
+
+    print("🚀 尝试 human-level 点击 Open Linkvertise")
+
+    old_url = sb.get_current_url()
+
+    human_level_click(sb, "Open Linkvertise")
+
+    print("⏳ 等待真实跳转...")
+
+    for _ in range(30):
+
         try:
-            if "Renew" in b.text:
-                sb.execute_script("arguments[0].scrollIntoView({block:'center'});", b)
-                time.sleep(0.3)
-                ActionChains(sb.driver).move_to_element(b).click(b).perform()
+            url = sb.get_current_url()
+
+            # 1. URL change
+            if url != old_url:
+                print("✅ URL 变化:", url)
                 return True
+
+            # 2. detect linkvertise
+            if "linkvertise" in url:
+                print("✅ 进入 Linkvertise")
+                return True
+
+            # 3. new tab
+            handles = sb.driver.window_handles
+            if len(handles) > 1:
+                sb.switch_to_window(handles[-1])
+                print("✅ 新 tab 已切换")
+                return True
+
         except:
             pass
+
+        time.sleep(1)
+
+    print("❌ 完全未跳转 → 100% click 被拦截 (isTrusted / overlay block)")
     return False
 
 
-# =========================
-# modal 等待（替换 polling JS）
-# =========================
+# ==========================================================
+# 🤖 bot
+# ==========================================================
 
-def wait_modal(sb, timeout=20):
-    try:
-        WebDriverWait(sb.driver, timeout).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '[role="dialog"], div.fixed'))
-        )
-        print("✅ 弹窗出现")
-        return True
-    except:
-        return False
+def inject_linkvertise_bot(sb):
+
+    sb.execute_script("""
+    (() => {
+
+        function find(tag,text){
+            return [...document.querySelectorAll(tag)]
+                .find(e => e.innerText && e.innerText.includes(text));
+        }
+
+        function click(el){
+            if(!el) return;
+            el.focus();
+            el.click();
+        }
+
+        setInterval(() => {
+
+            try {
+
+                const url = location.href;
+
+                let get = find('button','Get Link');
+                if(get) click(get);
+
+                if(url.includes('/access/')){
+
+                    let watch = find('div','Watch Ads');
+                    if(watch) click(watch);
+
+                    let cont = find('button','Continue');
+                    if(cont) click(cont);
+                }
+
+                let skip = find('button','Skip Ad');
+                if(skip) click(skip);
+
+                if(url.includes('/success')){
+                    let open = find('button','Open');
+                    if(open){
+                        click(open);
+                        setTimeout(()=>window.close(),2000);
+                    }
+                }
+
+            } catch(e) {}
+
+        }, 2000);
+
+    })();
+    """)
 
 
-# =========================
-# tab / redirect 处理
-# =========================
-
-def handle_new_tab(sb, old_handles):
-    time.sleep(2)
-    new_handles = sb.driver.window_handles
-
-    if len(new_handles) > len(old_handles):
-        new_tab = list(set(new_handles) - set(old_handles))[0]
-        sb.switch_to_window(new_tab)
-        print("✅ 已切换新窗口")
-        return True
-
-    return False
-
-
-# =========================
+# ==========================================================
 # 主流程
-# =========================
+# ==========================================================
 
 def run():
 
@@ -133,7 +265,7 @@ def run():
 
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
-        time.sleep(3)
+        time.sleep(5)
 
         screenshot(sb, "login.png")
 
@@ -152,32 +284,36 @@ def run():
         print("🎮 Server:", server_id)
 
         sb.open(f"https://panel.orihost.com/server/{server_id}")
-        time.sleep(5)
+        time.sleep(8)
 
         screenshot(sb, "server_page.png")
 
+        clean_ads_once(sb)
+
         print("🔍 点击 Renew")
-        click_renew(sb)
+        click_real_renew(sb)
 
         time.sleep(2)
+
         screenshot(sb, "after_renew.png")
 
         if not wait_modal(sb):
-            print("❌ 没检测到弹窗")
             return "NO_MODAL"
 
-        # =========================
-        # 点击 Open Link（只做正常点击）
-        # =========================
-
-        old_handles = sb.driver.window_handles
-
-        print("🚀 点击 Open Link")
-        safe_click(sb, "button", "Open Linkvertise")
-
-        handle_new_tab(sb, old_handles)
+        click_modal_open(sb)
 
         time.sleep(5)
+
+        try:
+            handles = sb.driver.window_handles
+            if len(handles) > 1:
+                sb.switch_to_window(handles[-1])
+        except:
+            pass
+
+        inject_linkvertise_bot(sb)
+
+        time.sleep(40)
 
         screenshot(sb, "final.png")
 
