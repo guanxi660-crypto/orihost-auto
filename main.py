@@ -41,72 +41,52 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 只删 iframe
+# 💀 清 iframe（安全）
 # ==========================================================
 
 def clean_ads(sb):
-    sb.execute_script("document.querySelectorAll('iframe').forEach(el=>el.remove())")
+    sb.execute_script("document.querySelectorAll('iframe').forEach(e=>e.remove())")
 
 
 # ==========================================================
-# 🎯 精准点击 Renew（核心修复）
+# 🎯 精准点击 Renew
 # ==========================================================
 
 def click_real_renew(sb):
 
-    print("🎯 精准查找 Renew 按钮")
+    return sb.execute_script("""
+    (() => {
 
-    for _ in range(10):
+        const btns = document.querySelectorAll('button');
 
-        clicked = sb.execute_script("""
-        (() => {
+        for (const b of btns) {
+            if ((b.innerText || '').includes('Renew')) {
 
-            const btns = document.querySelectorAll('button');
+                b.scrollIntoView({block:'center'});
 
-            for (const btn of btns) {
-                const text = btn.innerText || "";
-                if (text.includes("Renew")) {
+                b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
+                b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+                b.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+                b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
 
-                    btn.scrollIntoView({block:'center'});
-
-                    // 强制 React 触发
-                    btn.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}));
-                    btn.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
-                    btn.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
-                    btn.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-
-                    return true;
-                }
+                return true;
             }
+        }
 
-            return false;
-        })();
-        """)
-
-        if clicked:
-            print("✅ 已点击 Renew（真实按钮）")
-            return True
-
-        time.sleep(1)
-
-    return False
+        return false;
+    })();
+    """)
 
 
 # ==========================================================
-# 🎯 等待 modal
+# 🎯 等待弹窗
 # ==========================================================
 
 def wait_modal(sb):
 
-    print("🎯 等待弹窗...")
-
     for _ in range(15):
 
-        exists = sb.execute_script("""
-        return !!document.querySelector('#headlessui-dialog-1');
-        """)
-
-        if exists:
+        if sb.execute_script("return !!document.querySelector('#headlessui-dialog-1');"):
             print("✅ 弹窗出现")
             return True
 
@@ -116,35 +96,64 @@ def wait_modal(sb):
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise
+# 🔥 修复版：点击 Open Linkvertise（核心）
 # ==========================================================
 
 def click_modal_open(sb):
 
-    return sb.execute_script("""
-    (() => {
+    print("🎯 查找 Open Linkvertise 按钮...")
 
-        const modal = document.querySelector('#headlessui-dialog-1');
-        if (!modal) return false;
+    for _ in range(10):
 
-        const btns = modal.querySelectorAll('button');
+        clicked = sb.execute_script("""
+        (() => {
 
-        for (const b of btns) {
-            if (b.innerText.includes('Open Linkvertise')) {
+            const modal = document.querySelector('#headlessui-dialog-1');
+            if (!modal) return false;
 
-                b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+            // 1️⃣ 精确按钮选择（React modal结构）
+            const btns = modal.querySelectorAll('button');
+
+            for (const b of btns) {
+
+                const text = (b.innerText || '').trim();
+
+                if (text.includes('Open Linkvertise')) {
+
+                    b.scrollIntoView({block:'center'});
+
+                    b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
+                    b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+                    b.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+                    b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+
+                    return true;
+                }
+            }
+
+            // 2️⃣ fallback：按 class 名
+            const fallback = modal.querySelector('button.iEubrt, button[class*="Linkvertise"]');
+            if (fallback) {
+                fallback.click();
                 return true;
             }
-        }
 
-        return false;
+            return false;
 
-    })();
-    """)
+        })();
+        """)
+
+        if clicked:
+            print("✅ 已点击 Open Linkvertise")
+            return True
+
+        time.sleep(1)
+
+    return False
 
 
 # ==========================================================
-# 🤖 Linkvertise 自动
+# 🤖 Linkvertise 自动处理（带日志）
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
@@ -152,44 +161,46 @@ def inject_linkvertise_bot(sb):
     sb.execute_script("""
     (function(){
 
-        function log(msg){
-            console.log("[AUTO]", msg);
-        }
+        function log(m){ console.log('[AUTO]',m); }
 
-        function find(tag, text){
+        function find(tag,text){
             return [...document.querySelectorAll(tag)]
-                .find(e => e.innerText && e.innerText.includes(text));
+                .find(e=>e.innerText && e.innerText.includes(text));
         }
 
         function click(el,name){
             if(!el) return;
-            log("点击:"+name);
+            log('点击 '+name);
             el.click();
+            el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
         }
 
         setInterval(()=>{
 
             try{
-                const url = location.href;
 
-                let btn = find('button','Get Link');
-                if(btn) click(btn,"Get Link");
+                const url = location.href;
+                log('URL: '+url);
+
+                let get = find('button','Get Link');
+                if(get) click(get,'Get Link');
 
                 if(url.includes('/access/')){
+
                     let watch = find('div','Watch Ads');
-                    if(watch) click(watch,"Watch Ads");
+                    if(watch) click(watch,'Watch Ads');
 
                     let cont = find('button','Continue');
-                    if(cont) click(cont,"Continue");
+                    if(cont) click(cont,'Continue');
                 }
 
                 let skip = find('button','Skip Ad');
-                if(skip) click(skip,"Skip Ad");
+                if(skip) click(skip,'Skip Ad');
 
                 if(url.includes('/success')){
                     let open = find('button','Open');
                     if(open){
-                        click(open,"Final Open");
+                        click(open,'Final Open');
                         setTimeout(()=>window.close(),2000);
                     }
                 }
@@ -240,16 +251,21 @@ def run():
 
         clean_ads(sb)
 
-        # ===============================
+        # ===========================
         # Renew
-        # ===============================
+        # ===========================
 
-        if not click_real_renew(sb):
-            return "RENEW_CLICK_FAIL"
+        print("🔍 点击 Renew")
+
+        click_real_renew(sb)
 
         time.sleep(2)
 
         screenshot(sb, "after_renew.png")
+
+        # ===========================
+        # Modal
+        # ===========================
 
         if not wait_modal(sb):
             return "NO_MODAL"
@@ -259,6 +275,7 @@ def run():
 
         time.sleep(5)
 
+        # window handle fallback
         try:
             handles = sb.driver.window_handles
             if len(handles) > 1:
