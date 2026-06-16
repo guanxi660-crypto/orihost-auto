@@ -41,20 +41,21 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 🚫 轻量去广告（只做一次）
+# 🚫 轻量去广告（只执行一次）
 # ==========================================================
 
 def clean_ads_once(sb):
-    # 只移除 iframe，不做其他 DOM 干预
     sb.execute_script("""
-        document.querySelectorAll('iframe').forEach(e => {
-            try { e.remove(); } catch(e) {}
-        });
+        (() => {
+            document.querySelectorAll('iframe').forEach(e => {
+                try { e.remove(); } catch(e) {}
+            });
+        })();
     """)
 
 
 # ==========================================================
-# 🎯 点击 Renew（稳定版）
+# 🎯 Renew 点击
 # ==========================================================
 
 def click_real_renew(sb):
@@ -68,8 +69,7 @@ def click_real_renew(sb):
 
             if (t.includes('Renew')) {
                 b.scrollIntoView({block:'center'});
-
-                b.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+                b.click();
                 return true;
             }
         }
@@ -79,17 +79,24 @@ def click_real_renew(sb):
 
 
 # ==========================================================
-# 🎯 等待 modal（不依赖固定 id）
+# 🎯 modal 检测（修复 illegal return）
 # ==========================================================
 
 def wait_modal(sb):
 
     for _ in range(20):
-        modal = sb.execute_script("""
-            return document.querySelector('[role="dialog"]') ||
-                   document.querySelector('div[class*="fixed"]');
+
+        found = sb.execute_script("""
+        (() => {
+            const modal =
+                document.querySelector('[role="dialog"]') ||
+                document.querySelector('div[class*="fixed"]');
+
+            return !!modal;
+        })();
         """)
-        if modal:
+
+        if found:
             print("✅ 弹窗出现")
             return True
 
@@ -99,16 +106,16 @@ def wait_modal(sb):
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise（稳定增强版）
+# 🎯 点击 Open Linkvertise（稳定版）
 # ==========================================================
 
 def click_modal_open(sb):
 
-    # 直接找按钮文本（比 class 稳）
-    sb.wait_for_element_visible("button", timeout=15)
+    sb.wait_for_element("button", timeout=15)
 
     ok = sb.execute_script("""
     (() => {
+
         const btns = [...document.querySelectorAll('button')];
 
         const target = btns.find(b =>
@@ -126,7 +133,6 @@ def click_modal_open(sb):
     """)
 
     if not ok:
-        # fallback class
         sb.uc_click("button.iEubrt")
 
     print("✅ Open Linkvertise 已点击")
@@ -134,13 +140,13 @@ def click_modal_open(sb):
 
 
 # ==========================================================
-# 🤖 Linkvertise bot（保持）
+# 🤖 Linkvertise bot
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
 
     sb.execute_script("""
-    (function(){
+    (() => {
 
         function find(tag,text){
             return [...document.querySelectorAll(tag)]
@@ -226,24 +232,14 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        # ✅ 只在这里清一次
         clean_ads_once(sb)
 
-        # ===========================
-        # Renew
-        # ===========================
-
         print("🔍 点击 Renew")
-
         click_real_renew(sb)
 
         time.sleep(2)
 
         screenshot(sb, "after_renew.png")
-
-        # ===========================
-        # Modal
-        # ===========================
 
         if not wait_modal(sb):
             return "NO_MODAL"
@@ -252,7 +248,6 @@ def run():
 
         time.sleep(5)
 
-        # window switch fallback
         try:
             handles = sb.driver.window_handles
             if len(handles) > 1:
