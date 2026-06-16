@@ -41,45 +41,63 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 超强点击
+# 💀 终极清广告（新版）
+# ==========================================================
+
+def nuke_ads(sb):
+
+    sb.execute_script("""
+    // 删除 iframe
+    document.querySelectorAll('iframe').forEach(el => el.remove());
+
+    // 删除遮罩层
+    document.querySelectorAll('div,section').forEach(el => {
+        const style = window.getComputedStyle(el);
+
+        if (
+            style.position === 'fixed' &&
+            parseInt(style.zIndex) > 1000
+        ) {
+            el.remove();
+        }
+    });
+
+    // 解锁点击
+    document.body.style.pointerEvents = 'auto';
+
+    document.querySelectorAll('*').forEach(el=>{
+        el.style.pointerEvents='auto';
+    });
+    """)
+
+
+# ==========================================================
+# 💀 强力点击（升级版）
 # ==========================================================
 
 def extreme_click(sb, keyword):
+
     return sb.execute_script(f"""
     (() => {{
-
-        function isVisible(el) {{
-            const style = window.getComputedStyle(el);
-            return style.display !== 'none' && style.visibility !== 'hidden';
-        }}
-
-        function click(el) {{
-            if (!el) return false;
-
-            el.style.pointerEvents = 'auto';
-            el.style.zIndex = 999999;
-
-            el.scrollIntoView({{block:'center'}});
-
-            try {{ el.click(); }} catch(e){{}}
-
-            const evt = {{ bubbles:true, cancelable:true, view:window }};
-            el.dispatchEvent(new MouseEvent('mousedown', evt));
-            el.dispatchEvent(new MouseEvent('mouseup', evt));
-            el.dispatchEvent(new MouseEvent('click', evt));
-
-            return true;
-        }}
 
         const els = document.querySelectorAll('*');
 
         for (const el of els) {{
-            if (!el.innerText) continue;
 
-            const txt = el.innerText.toLowerCase();
+            const txt = (el.innerText || "").toLowerCase();
 
-            if (txt.includes("{keyword.lower()}") && isVisible(el)) {{
-                return click(el);
+            if (txt.includes("{keyword.lower()}")) {{
+
+                el.scrollIntoView({{block:'center'}});
+
+                try {{ el.click(); }} catch(e){{}}
+
+                el.dispatchEvent(new MouseEvent('click', {{
+                    bubbles:true,
+                    cancelable:true
+                }}));
+
+                return true;
             }}
         }}
 
@@ -90,86 +108,23 @@ def extreme_click(sb, keyword):
 
 
 # ==========================================================
-# 💀 点击 iframe 里的 Close（已修复）
-# ==========================================================
-
-def click_iframe_close(sb):
-
-    iframes = sb.find_elements("iframe")
-
-    for idx, iframe in enumerate(iframes):
-        try:
-            sb.switch_to_frame(iframe)
-
-            clicked = sb.execute_script("""
-            (() => {
-
-                const keys = ["close", "×", "skip"];
-
-                const els = document.querySelectorAll("*");
-
-                for (const el of els) {
-
-                    const txt = (el.innerText || "").toLowerCase();
-
-                    for (const k of keys) {
-                        if (txt.includes(k)) {
-
-                            el.style.zIndex = 999999;
-                            el.style.pointerEvents = 'auto';
-
-                            try { el.click(); } catch(e){}
-
-                            const evt = { bubbles:true, cancelable:true };
-                            el.dispatchEvent(new MouseEvent('click', evt));
-
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
-
-            })();
-            """)
-
-            sb.switch_to_default_content()
-
-            if clicked:
-                print(f"✅ iframe[{idx}] Close 已点击")
-                return True
-
-        except Exception as e:
-            print(f"⚠️ iframe[{idx}] 失败:", e)
-            sb.switch_to_default_content()
-
-    return False
-
-
-# ==========================================================
-# 💀 多次清广告
-# ==========================================================
-
-def clean_ads(sb, rounds=5):
-    for _ in range(rounds):
-        click_iframe_close(sb)
-        time.sleep(1)
-
-
-# ==========================================================
-# 🎯 点击 Open Linkvertise
+# 🎯 点击 Linkvertise（强化）
 # ==========================================================
 
 def click_open_linkvertise(sb):
 
-    print("🎯 点击 Open Linkvertise")
+    print("🎯 开始点击 Linkvertise")
 
-    for _ in range(20):
+    for i in range(30):
 
-        clean_ads(sb, 1)
+        nuke_ads(sb)
 
         if extreme_click(sb, "open linkvertise"):
             print("✅ 命中 Open Linkvertise")
+            return True
+
+        if extreme_click(sb, "linkvertise"):
+            print("✅ 命中 Linkvertise")
             return True
 
         if extreme_click(sb, "open"):
@@ -218,16 +173,18 @@ def run():
         screenshot(sb, "server_page.png")
 
         print("💀 初始清广告")
-        clean_ads(sb, 5)
+        for _ in range(5):
+            nuke_ads(sb)
+            time.sleep(1)
 
         # ==================================================
-        # 1️⃣ 点击 Renew
+        # 点击 Renew
         # ==================================================
 
         print("🔍 点击 Renew")
 
-        for _ in range(5):
-            clean_ads(sb, 1)
+        for _ in range(10):
+            nuke_ads(sb)
 
             if extreme_click(sb, "renew"):
                 print("✅ Renew 成功")
@@ -240,10 +197,12 @@ def run():
         time.sleep(3)
 
         print("💀 Renew 后清广告")
-        clean_ads(sb, 5)
+        for _ in range(5):
+            nuke_ads(sb)
+            time.sleep(1)
 
         # ==================================================
-        # 2️⃣ Open Linkvertise
+        # Linkvertise
         # ==================================================
 
         if not click_open_linkvertise(sb):
