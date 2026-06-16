@@ -37,12 +37,12 @@ def extract_server_id(sb):
     for s in spans:
         txt = s.text.strip()
         if txt.startswith("#"):
-            return txt.replace("#", "")
+            return txt.replace("#", "").strip()  # ✅ 修复空格
     return None
 
 
 # ==========================================================
-# 💀 杀广告（核心修复）
+# 💀 杀广告
 # ==========================================================
 
 def kill_ads(sb):
@@ -50,54 +50,67 @@ def kill_ads(sb):
     print("💀 清理广告")
 
     sb.execute_script("""
-        // 删除常见广告节点
-        document.querySelectorAll('[id*="ad"], [class*="ad"], iframe')
-            .forEach(el => {
-                el.remove();
-            });
+    (() => {
 
-        // 删除全屏遮罩
+        document.querySelectorAll('[id*="ad"], [class*="ad"], iframe')
+            .forEach(el => el.remove());
+
         document.querySelectorAll('*').forEach(el => {
             const z = window.getComputedStyle(el).zIndex;
             if (z && parseInt(z) > 9999) {
                 el.remove();
             }
         });
-    """)
 
-    # 再尝试点击 Close / Continue
-    for word in ["close", "continue", "tap"]:
-        sb.execute_script(f"""
-            document.querySelectorAll('*').forEach(el => {{
-                if (el.innerText &&
-                    el.innerText.toLowerCase().includes("{word}")) {{
+        const words = ["close", "continue", "tap"];
+
+        document.querySelectorAll('*').forEach(el => {
+            if (!el.innerText) return;
+
+            const txt = el.innerText.toLowerCase();
+
+            for (const w of words) {
+                if (txt.includes(w)) {
                     el.click();
-                }}
-            }});
-        """)
+                }
+            }
+        });
+
+        return true;
+
+    })();
+    """)
 
 
 # ==========================================================
-# 💀 点击
+# 💀 点击（修复 return）
 # ==========================================================
 
 def click_text(sb, text):
 
     return sb.execute_script(f"""
+    (() => {{
+
         const els = document.querySelectorAll('*');
+
         for (const el of els) {{
             if (el.innerText &&
                 el.innerText.toLowerCase().includes("{text.lower()}")) {{
+
+                el.scrollIntoView({{block:'center'}});
                 el.click();
                 return true;
             }}
         }}
+
         return false;
+
+    }})();
     """)
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise（加强版）
+# 🎯 点击 Open Linkvertise（修复版）
 # ==========================================================
 
 def click_open_linkvertise(sb):
@@ -106,24 +119,31 @@ def click_open_linkvertise(sb):
 
     for _ in range(20):
 
-        # 再清一遍广告
         kill_ads(sb)
 
         result = sb.execute_script("""
+        (() => {
+
             const dialog = document.querySelector('[role="dialog"]');
 
             if (dialog) {
+
                 const buttons = dialog.querySelectorAll('button');
 
                 for (const btn of buttons) {
+
                     if (btn.innerText &&
                         btn.innerText.toLowerCase().includes('open')) {
+
                         btn.click();
                         return true;
                     }
                 }
             }
+
             return false;
+
+        })();
         """)
 
         if result:
@@ -171,7 +191,7 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        # 💀 第一步：先杀广告
+        # 💀 清广告
         kill_ads(sb)
         time.sleep(2)
 
@@ -180,10 +200,9 @@ def run():
         click_text(sb, "renew")
 
         time.sleep(3)
+        screenshot(sb, "after_renew.png")
 
-        screenshot(sb, "after_renew.png")  # ✅你要的截图
-
-        # 💀 再杀广告（弹窗前）
+        # 💀 再清
         kill_ads(sb)
 
         # 2️⃣ Open Linkvertise
@@ -193,7 +212,6 @@ def run():
 
         time.sleep(5)
 
-        # 切窗口
         handles = sb.driver.window_handles
         if len(handles) > 1:
             sb.switch_to_window(handles[-1])
