@@ -41,24 +41,12 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 清广告（终极）
+# 💀 只删 iframe（安全版）
 # ==========================================================
 
-def nuke_ads(sb):
+def clean_ads(sb):
     sb.execute_script("""
     document.querySelectorAll('iframe').forEach(el => el.remove());
-
-    document.querySelectorAll('div,section').forEach(el => {
-        const style = window.getComputedStyle(el);
-        if (style.position === 'fixed' && parseInt(style.zIndex) > 1000) {
-            el.remove();
-        }
-    });
-
-    document.body.style.pointerEvents = 'auto';
-    document.querySelectorAll('*').forEach(el=>{
-        el.style.pointerEvents='auto';
-    });
     """)
 
 
@@ -85,23 +73,72 @@ def extreme_click(sb, keyword):
 
 
 # ==========================================================
-# 🚀 注入 Linkvertise 自动脚本
+# 🎯 点击弹窗里的 Open Linkvertise（关键）
+# ==========================================================
+
+def click_modal_open(sb):
+
+    print("🎯 等待弹窗...")
+
+    for _ in range(10):
+        exists = sb.execute_script("""
+        return !!document.querySelector('#headlessui-dialog-1');
+        """)
+
+        if exists:
+            print("✅ 检测到弹窗")
+
+            clicked = sb.execute_script("""
+            (() => {
+                const modal = document.querySelector('#headlessui-dialog-1');
+                if (!modal) return false;
+
+                const btns = modal.querySelectorAll('button');
+
+                for (const b of btns) {
+                    if (b.innerText.includes('Open Linkvertise')) {
+                        b.click();
+                        b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+                        return true;
+                    }
+                }
+
+                return false;
+            })();
+            """)
+
+            if clicked:
+                print("✅ 已点击 Open Linkvertise")
+                return True
+
+        time.sleep(1)
+
+    return False
+
+
+# ==========================================================
+# 🤖 Linkvertise 自动脚本（带日志）
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
 
-    print("🤖 注入 Linkvertise 自动处理")
+    print("🤖 注入 Linkvertise 脚本")
 
     sb.execute_script("""
     (function(){
+
+        function log(msg){
+            console.log("[AUTO]", msg);
+        }
 
         function findByText(tag, text) {
             return Array.from(document.querySelectorAll(tag))
                 .find(el => el.innerText && el.innerText.includes(text));
         }
 
-        function click(el){
+        function click(el, name){
             if(!el) return;
+            log("点击: " + name);
             el.click();
             el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
         }
@@ -110,29 +147,26 @@ def inject_linkvertise_bot(sb):
 
             try{
                 const url = location.href;
+                log("当前页面: " + url);
 
-                // Get Link
-                let btn = findByText('button','Get Link') || findByText('a','Get Link');
-                if(btn) click(btn);
+                let btn = findByText('button','Get Link');
+                if(btn) click(btn, "Get Link");
 
-                // Watch Ads
                 if(url.includes('/access/')){
                     let watch = findByText('div','Watch Ads');
-                    if(watch) click(watch);
+                    if(watch) click(watch, "Watch Ads");
 
                     let cont = findByText('button','Continue');
-                    if(cont) click(cont);
+                    if(cont) click(cont, "Continue");
                 }
 
-                // Skip
                 let skip = findByText('button','Skip Ad');
-                if(skip) click(skip);
+                if(skip) click(skip, "Skip Ad");
 
-                // Success
                 if(url.includes('/success')){
                     let open = findByText('button','Open');
                     if(open){
-                        click(open);
+                        click(open, "Final Open");
                         setTimeout(()=>window.close(),2000);
                     }
                 }
@@ -181,46 +215,37 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        for _ in range(5):
-            nuke_ads(sb)
-            time.sleep(1)
+        clean_ads(sb)
 
+        # ==================================================
         # Renew
+        # ==================================================
+
         print("🔍 点击 Renew")
-        for _ in range(10):
-            nuke_ads(sb)
-            if extreme_click(sb, "renew"):
-                print("✅ Renew 成功")
-                break
-            time.sleep(1)
+
+        extreme_click(sb, "renew")
+
+        time.sleep(2)
 
         screenshot(sb, "after_renew.png")
 
-        time.sleep(3)
-
-        for _ in range(5):
-            nuke_ads(sb)
-            time.sleep(1)
-
-        # Open
-        print("🎯 点击 Open")
-        extreme_click(sb, "open")
+        # 👇 关键：点击弹窗
+        if not click_modal_open(sb):
+            return "NO_MODAL"
 
         time.sleep(5)
 
-        # 👇 关键：尝试切窗口（防炸）
+        # 切窗口（安全）
         try:
             handles = sb.driver.window_handles
             if len(handles) > 1:
                 sb.switch_to_window(handles[-1])
         except:
-            print("⚠️ 浏览器已跳转或关闭，继续执行")
+            print("⚠️ 浏览器跳转")
 
-        # 👇 注入 Linkvertise 自动处理
         inject_linkvertise_bot(sb)
 
-        print("⏳ 等待 Linkvertise 自动完成...")
-        time.sleep(30)
+        time.sleep(40)
 
         screenshot(sb, "final.png")
 
