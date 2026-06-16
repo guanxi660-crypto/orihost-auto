@@ -101,55 +101,18 @@ def wait_modal(sb):
 
 def click_modal_open(sb):
 
-    print("🎯 查找 Open Linkvertise 按钮...")
+    sb.wait_for_element(
+        "#headlessui-dialog-1 button.iEubrt",
+        timeout=15
+    )
 
-    for _ in range(10):
+    sb.uc_click(
+        "#headlessui-dialog-1 button.iEubrt"
+    )
 
-        clicked = sb.execute_script("""
-        (() => {
+    print("✅ Open Linkvertise 已真实点击")
 
-            const modal = document.querySelector('#headlessui-dialog-1');
-            if (!modal) return false;
-
-            // 1️⃣ 精确按钮选择（React modal结构）
-            const btns = modal.querySelectorAll('button');
-
-            for (const b of btns) {
-
-                const text = (b.innerText || '').trim();
-
-                if (text.includes('Open Linkvertise')) {
-
-                    b.scrollIntoView({block:'center'});
-
-                    b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
-                    b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
-                    b.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
-                    b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
-
-                    return true;
-                }
-            }
-
-            // 2️⃣ fallback：按 class 名
-            const fallback = modal.querySelector('button.iEubrt, button[class*="Linkvertise"]');
-            if (fallback) {
-                fallback.click();
-                return true;
-            }
-
-            return false;
-
-        })();
-        """)
-
-        if clicked:
-            print("✅ 已点击 Open Linkvertise")
-            return True
-
-        time.sleep(1)
-
-    return False
+    return True
 
 
 # ==========================================================
