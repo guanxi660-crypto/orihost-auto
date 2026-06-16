@@ -41,7 +41,7 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 🚫 轻量去广告（只执行一次）
+# 🚫 clean ads（只一次）
 # ==========================================================
 
 def clean_ads_once(sb):
@@ -65,9 +65,7 @@ def click_real_renew(sb):
         const btns = document.querySelectorAll('button');
 
         for (const b of btns) {
-            const t = (b.innerText || '').trim();
-
-            if (t.includes('Renew')) {
+            if ((b.innerText || '').includes('Renew')) {
                 b.scrollIntoView({block:'center'});
                 b.click();
                 return true;
@@ -79,20 +77,18 @@ def click_real_renew(sb):
 
 
 # ==========================================================
-# 🎯 modal 检测（修复 illegal return）
+# 🎯 modal detect
 # ==========================================================
 
 def wait_modal(sb):
 
     for _ in range(20):
-
         found = sb.execute_script("""
         (() => {
-            const modal =
+            return !!(
                 document.querySelector('[role="dialog"]') ||
-                document.querySelector('div[class*="fixed"]');
-
-            return !!modal;
+                document.querySelector('div[class*="fixed"]')
+            );
         })();
         """)
 
@@ -106,12 +102,38 @@ def wait_modal(sb):
 
 
 # ==========================================================
-# 🎯 点击 Open Linkvertise（稳定版）
+# 💥 超真实点击（关键修复）
+# ==========================================================
+
+def force_real_click(sb, selector):
+
+    sb.execute_script(f"""
+    (() => {{
+        const el = document.querySelector("{selector}");
+        if (!el) return false;
+
+        el.scrollIntoView({{block:'center'}});
+
+        el.dispatchEvent(new PointerEvent('pointerdown', {{bubbles:true}}));
+        el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true}}));
+        el.dispatchEvent(new MouseEvent('mouseup', {{bubbles:true}}));
+        el.dispatchEvent(new MouseEvent('click', {{bubbles:true}}));
+
+        return true;
+    }})();
+    """)
+
+
+# ==========================================================
+# 🎯 Open Linkvertise（增强稳定版）
 # ==========================================================
 
 def click_modal_open(sb):
 
-    sb.wait_for_element("button", timeout=15)
+    print("🚀 尝试点击 Open Linkvertise")
+
+    # 先记录 URL
+    old_url = sb.get_current_url()
 
     ok = sb.execute_script("""
     (() => {
@@ -122,25 +144,54 @@ def click_modal_open(sb):
             (b.innerText || '').includes('Open Linkvertise')
         );
 
-        if (target) {
-            target.scrollIntoView({block:'center'});
-            target.click();
-            return true;
-        }
+        if (!target) return false;
 
-        return false;
+        target.scrollIntoView({block:'center'});
+
+        target.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}));
+        target.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        target.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
+        target.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+
+        return true;
+
     })();
     """)
 
     if not ok:
         sb.uc_click("button.iEubrt")
 
-    print("✅ Open Linkvertise 已点击")
-    return True
+    # ======================================================
+    # 等待跳转 / 新 tab
+    # ======================================================
+
+    print("⏳ 等待 Linkvertise 跳转...")
+
+    for _ in range(20):
+        try:
+            url = sb.get_current_url()
+
+            if "linkvertise" in url or url != old_url:
+                print("✅ 已跳转:", url)
+                return True
+
+            handles = sb.driver.window_handles
+            if len(handles) > 1:
+                sb.switch_to_window(handles[-1])
+                print("✅ 切换到新窗口")
+                return True
+
+        except:
+            pass
+
+        time.sleep(1)
+
+    print("⚠️ 未检测到跳转（可能 click 被拦截）")
+    return False
 
 
 # ==========================================================
-# 🤖 Linkvertise bot
+# 🤖 bot（保持）
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
