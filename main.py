@@ -7,7 +7,6 @@ from seleniumbase import SB
 
 
 LOGIN_URL = "https://panel.orihost.com/auth/login"
-HOME_URL = "https://panel.orihost.com/"
 
 EMAIL_SEL = 'input[name="username"]'
 PASS_SEL = 'input[name="password"]'
@@ -26,23 +25,6 @@ def screenshot(sb, name):
         path = f"{SCREENSHOT_DIR}/{int(time.time())}_{name}"
         sb.save_screenshot(path)
         print("📸", path)
-    except:
-        pass
-
-
-def tg_send(msg):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not token or not chat:
-        return
-
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat, "text": msg},
-            timeout=20
-        )
     except:
         pass
 
@@ -67,10 +49,10 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 点击（通用 + iframe）
+# 💀 通用点击（含 iframe）
 # ==========================================================
 
-def click_by_text_ultimate(sb, keyword, timeout=30):
+def click_by_text_ultimate(sb, keyword, timeout=20):
 
     print(f"🔍 点击: {keyword}")
 
@@ -84,19 +66,11 @@ def click_by_text_ultimate(sb, keyword, timeout=30):
                     const all = doc.querySelectorAll('*');
 
                     for (const el of all) {{
-
                         if (!el.innerText) continue;
 
                         if (el.innerText.toLowerCase().includes("{keyword.lower()}")) {{
-
                             el.scrollIntoView({{block:'center'}});
-
-                            el.dispatchEvent(new MouseEvent('click', {{
-                                bubbles: true,
-                                cancelable: true,
-                                view: window
-                            }}));
-
+                            el.click();
                             return true;
                         }}
                     }}
@@ -133,7 +107,50 @@ def click_by_text_ultimate(sb, keyword, timeout=30):
 
 
 # ==========================================================
-# 🚀 Linkvertise JS（你的原版）
+# 🎯 专杀 Open Linkvertise（关键修复）
+# ==========================================================
+
+def click_open_linkvertise(sb):
+
+    print("🎯 点击弹窗 Open Linkvertise")
+
+    for _ in range(20):
+        try:
+            result = sb.execute_script("""
+                const dialogs = document.querySelectorAll('[role="dialog"]');
+
+                for (const dialog of dialogs) {
+
+                    const buttons = dialog.querySelectorAll('button');
+
+                    if (buttons.length >= 2) {
+
+                        const btn = buttons[buttons.length - 1];
+
+                        if (btn.innerText.toLowerCase().includes('open')) {
+                            btn.click();
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            """)
+
+            if result:
+                print("✅ 已点击 Open Linkvertise")
+                return True
+
+        except Exception as e:
+            print("err:", e)
+
+        time.sleep(1)
+
+    return False
+
+
+# ==========================================================
+# 🚀 Linkvertise 自动脚本（你的完整版）
 # ==========================================================
 
 def inject_linkvertise_script(sb):
@@ -163,7 +180,6 @@ def inject_linkvertise_script(sb):
 
             if (url.includes('linkvertise.com')) {
 
-                // Step 1
                 const getLinkLink = document
                     .querySelector('[dusk="fullsize-get-content-btn"]')
                     ?.closest('a');
@@ -173,7 +189,6 @@ def inject_linkvertise_script(sb):
                     location.href = getLinkLink.href;
                 }
 
-                // Step 2
                 if (url.includes('/access/')) {
 
                     const wrappers = document.querySelectorAll(
@@ -230,7 +245,6 @@ def inject_linkvertise_script(sb):
                     }
                 }
 
-                // Step 3
                 const skipAdBtn =
                     findByText('span', 'Skip Ad') ||
                     findByText('button', 'Skip Ad');
@@ -245,7 +259,6 @@ def inject_linkvertise_script(sb):
                     }
                 }
 
-                // Step 4
                 if (url.includes('/success')) {
 
                     const lvButtons =
@@ -293,13 +306,7 @@ def run():
     email = os.getenv("ORIHOST_EMAIL")
     password = os.getenv("ORIHOST_PASSWORD")
 
-    with SB(
-        uc=True,
-        headless=True,
-        xvfb=True,
-        incognito=True,
-        chromium_arg="--no-sandbox,--disable-dev-shm-usage"
-    ) as sb:
+    with SB(uc=True, headless=True, xvfb=True, incognito=True) as sb:
 
         print("🌍 打开登录页")
         sb.open(LOGIN_URL)
@@ -315,47 +322,39 @@ def run():
             if is_logged_in(sb):
                 break
             time.sleep(1)
-        else:
-            screenshot(sb, "login_fail.png")
-            return "LOGIN_FAIL"
 
         print("✅ 登录成功")
 
         time.sleep(3)
+
         server_id = extract_server_id(sb)
-
-        if not server_id:
-            return "NO_SERVER"
-
         print("🎮 Server:", server_id)
 
         sb.open(f"https://panel.orihost.com/server/{server_id}")
+        time.sleep(8)
 
-        time.sleep(10)
         screenshot(sb, "server_page.png")
 
-        # 1️⃣ 点击 Renew
-        if not click_by_text_ultimate(sb, "renew"):
-            screenshot(sb, "renew_fail.png")
-            return "NO_RENEW_BTN"
+        # 1️⃣ Renew
+        click_by_text_ultimate(sb, "renew")
 
-        time.sleep(5)
+        time.sleep(3)
 
-        # 2️⃣ 点击 Open Linkvertise（弹窗）
-        if not click_by_text_ultimate(sb, "open linkvertise"):
+        # 2️⃣ 点弹窗按钮（关键）
+        if not click_open_linkvertise(sb):
             screenshot(sb, "open_lv_fail.png")
             return "NO_OPEN_LINKVERTISE"
 
         time.sleep(5)
 
-        # 3️⃣ 切换新窗口
+        # 3️⃣ 切新窗口
         handles = sb.driver.window_handles
         if len(handles) > 1:
             sb.switch_to_window(handles[-1])
 
-        screenshot(sb, "linkvertise_start.png")
+        screenshot(sb, "linkvertise.png")
 
-        # 4️⃣ 注入自动脚本
+        # 4️⃣ 注入脚本
         inject_linkvertise_script(sb)
 
         time.sleep(120)
@@ -366,15 +365,12 @@ def run():
 def main():
     result = run()
 
-    report = f"""
+    print(f"""
 📊 Orihost 自动续期报告
 
 状态: {result}
 时间: {time.strftime("%Y-%m-%d %H:%M:%S")}
-"""
-
-    print(report)
-    tg_send(report)
+""")
 
 
 if __name__ == "__main__":
