@@ -78,76 +78,206 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 通用点击
+# 关键修复：关闭弹窗
 # ==========================================================
 
-def click_by_text(sb, tag, keyword):
+def close_popups(sb):
     try:
-        els = sb.find_elements(tag)
-        for e in els:
-            if keyword.lower() in e.text.lower():
-                e.click()
-                print(f"🖱 点击: {keyword}")
-                return True
+        sb.execute_script("""
+            const selectors = [
+                '[aria-label="Close"]',
+                '.modal button',
+                '.popup button',
+                'button[aria-label="close"]'
+            ];
+
+            selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(btn => {
+                    if (btn.innerText.toLowerCase().includes('close') || btn.innerHTML.includes('×')) {
+                        btn.click();
+                    }
+                });
+            });
+        """)
     except:
         pass
-    return False
 
 
 # ==========================================================
-# Linkvertise（完整版）
+# 强力点击（修复 Renew）
 # ==========================================================
 
-def handle_linkvertise(sb):
-    print("🔗 Linkvertise flow...")
+def force_click(sb, keyword):
+    try:
+        sb.execute_script(f"""
+            const els = [...document.querySelectorAll('button, a')];
 
-    for i in range(80):
+            for (const el of els) {{
+                if (el.innerText && el.innerText.toLowerCase().includes('{keyword.lower()}')) {{
+                    el.scrollIntoView({{block:'center'}});
+                    el.click();
+                    return true;
+                }}
+            }}
+            return false;
+        """)
+        return True
+    except:
+        return False
 
-        current_url = ""
-        try:
-            current_url = sb.get_current_url()
-        except:
-            pass
 
-        print("🌐", current_url)
+# ==========================================================
+# Linkvertise（JS注入版）
+# ==========================================================
 
-        screenshot(sb, f"lv_{i}.png")
+def inject_linkvertise_script(sb):
+    print("🚀 注入 Linkvertise 自动脚本")
 
-        # ---------------------------
-        # Get Link
-        # ---------------------------
-        click_by_text(sb, "button", "get link")
+    sb.execute_script(r"""
+    (function () {
 
-        # ---------------------------
-        # Watch Ads / Continue
-        # ---------------------------
-        click_by_text(sb, "div", "watch")
-        click_by_text(sb, "button", "continue")
+        function visible(el) {
+            return el && el.offsetParent !== null;
+        }
 
-        # ---------------------------
-        # Skip Ad
-        # ---------------------------
-        click_by_text(sb, "button", "skip")
-        click_by_text(sb, "span", "skip")
+        function findByText(tag, text) {
+            const els = document.querySelectorAll(tag);
+            for (const el of els) {
+                if (el.textContent && el.textContent.includes(text)) {
+                    return el;
+                }
+            }
+            return null;
+        }
 
-        # ---------------------------
-        # SUCCESS → ⭐ 关键补充
-        # ---------------------------
-        if "success" in current_url:
+        setInterval(() => {
 
-            print("✅ 进入 success 页面")
+            const url = location.href;
 
-            if click_by_text(sb, "button", "open") or \
-               click_by_text(sb, "a", "open"):
+            // ====================================================
+            // Linkvertise 页面
+            // ====================================================
 
-                print("🚀 已点击 Open，流程完成")
-                time.sleep(5)
-                return True
+            if (url.includes('linkvertise.com')) {
 
-        time.sleep(2)
+                // Step 1: Get Link
+                const getLinkLink = document
+                    .querySelector('[dusk="fullsize-get-content-btn"]')
+                    ?.closest('a');
 
-    print("❌ Linkvertise 超时")
-    return False
+                if (getLinkLink && !window.getLinkClicked) {
+                    window.getLinkClicked = true;
+                    console.log('[Auto] Get Link');
+                    location.href = getLinkLink.href;
+                }
+
+                // Step 2: Watch Ads
+                if (url.includes('/access/')) {
+
+                    const wrappers = document.querySelectorAll(
+                        '[dusk="lv-membership-plan-option-wrapper-btn"]'
+                    );
+
+                    let watchAdsBtn = null;
+
+                    for (const wrapper of wrappers) {
+                        if (wrapper.textContent?.includes('Watch Ads')) {
+                            watchAdsBtn = wrapper;
+                            break;
+                        }
+                    }
+
+                    const waitText =
+                        findByText('div', 'Wait') ||
+                        findByText('span', 'Wait');
+
+                    if (watchAdsBtn) {
+
+                        const priceBox =
+                            watchAdsBtn.closest('.membership-plan-option');
+
+                        if (priceBox) {
+
+                            if (!priceBox.classList.contains('active')) {
+                                console.log('[Auto] 选择 Watch Ads');
+                                watchAdsBtn.click();
+                            } else {
+                                const continueBtn =
+                                    findByText('button', 'Continue');
+
+                                if (visible(continueBtn) && !window.continueClicked) {
+                                    window.continueClicked = true;
+                                    console.log('[Auto] Continue');
+                                    continueBtn.click();
+                                }
+                            }
+                        }
+
+                    } else if (waitText) {
+
+                        if (!window.waitTimerStarted) {
+                            window.waitTimerStarted = true;
+
+                            console.log('[Auto] Wait detected');
+
+                            setTimeout(() => {
+                                location.reload();
+                            }, 5 * 60 * 1000);
+                        }
+                    }
+                }
+
+                // Step 3: Skip Ad
+                const skipAdBtn =
+                    findByText('span', 'Skip Ad') ||
+                    findByText('button', 'Skip Ad');
+
+                if (visible(skipAdBtn)) {
+
+                    if (!window.lastSkipClick || Date.now() - window.lastSkipClick > 3000) {
+                        console.log('[Auto] Skip Ad');
+                        skipAdBtn.click();
+                        window.lastSkipClick = Date.now();
+                    }
+                }
+
+                // Step 4: Success
+                if (url.includes('/success')) {
+
+                    const lvButtons =
+                        document.querySelectorAll('[data-testid="lv-button"]');
+
+                    let openBtn = null;
+
+                    for (const btn of lvButtons) {
+                        if (btn.textContent?.includes('Open')) {
+                            openBtn = btn;
+                            break;
+                        }
+                    }
+
+                    if (visible(openBtn) && !window.openClicked) {
+                        window.openClicked = true;
+
+                        console.log('[Auto] Open');
+
+                        setTimeout(() => {
+
+                            openBtn.click();
+
+                            setTimeout(() => {
+                                window.close();
+                            }, 1500);
+
+                        }, 1500);
+                    }
+                }
+            }
+
+        }, 2000);
+
+    })();
+    """)
 
 
 # ==========================================================
@@ -203,30 +333,36 @@ def run():
         time.sleep(8)
         screenshot(sb, "server_page.png")
 
+        close_popups(sb)
+
         if "Renew Limit Reached" in sb.get_text("body"):
             return "LIMIT"
 
-        if not click_by_text(sb, "button", "renew"):
+        # 🔥 强力点击 Renew（修复点）
+        if not force_click(sb, "renew"):
             screenshot(sb, "renew_fail.png")
             return "NO_RENEW_BTN"
 
-        time.sleep(3)
+        print("🔁 点击 Renew 成功")
 
-        click_by_text(sb, "button", "linkvertise")
+        time.sleep(5)
+
+        force_click(sb, "linkvertise")
 
         time.sleep(5)
 
         handles = safe_window_handles(sb)
 
         if len(handles) > 1:
-            try:
-                sb.switch_to_window(1)
-            except:
-                return "BROWSER_CRASH"
+            sb.switch_to_window(1)
 
         screenshot(sb, "linkvertise_start.png")
 
-        handle_linkvertise(sb)
+        # 🚀 注入自动脚本
+        inject_linkvertise_script(sb)
+
+        # 等待自动跑
+        time.sleep(120)
 
         try:
             sb.switch_to_window(0)
