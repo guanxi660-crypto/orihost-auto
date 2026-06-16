@@ -41,21 +41,19 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 🚫 clean ads（只一次）
+# 🚫 clean (safe)
 # ==========================================================
 
 def clean_ads_once(sb):
     sb.execute_script("""
         (() => {
-            document.querySelectorAll('iframe').forEach(e => {
-                try { e.remove(); } catch(e) {}
-            });
+            document.querySelectorAll('iframe').forEach(e => e.remove());
         })();
     """)
 
 
 # ==========================================================
-# 🎯 Renew 点击
+# 🎯 Renew
 # ==========================================================
 
 def click_real_renew(sb):
@@ -67,7 +65,8 @@ def click_real_renew(sb):
         for (const b of btns) {
             if ((b.innerText || '').includes('Renew')) {
                 b.scrollIntoView({block:'center'});
-                b.click();
+                b.focus();
+                b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
                 return true;
             }
         }
@@ -77,12 +76,13 @@ def click_real_renew(sb):
 
 
 # ==========================================================
-# 🎯 modal detect
+# 🎯 modal detect（稳定）
 # ==========================================================
 
 def wait_modal(sb):
 
-    for _ in range(20):
+    for _ in range(25):
+
         found = sb.execute_script("""
         (() => {
             return !!(
@@ -102,83 +102,90 @@ def wait_modal(sb):
 
 
 # ==========================================================
-# 💥 超真实点击（关键修复）
+# 💥 超强点击（核心修复）
 # ==========================================================
 
-def force_real_click(sb, selector):
+def ultra_click(sb, text):
 
-    sb.execute_script(f"""
+    return sb.execute_script(f"""
     (() => {{
-        const el = document.querySelector("{selector}");
-        if (!el) return false;
 
-        el.scrollIntoView({{block:'center'}});
+        const btn = [...document.querySelectorAll('button')]
+            .find(b => (b.innerText || '').includes("{text}"));
 
-        el.dispatchEvent(new PointerEvent('pointerdown', {{bubbles:true}}));
-        el.dispatchEvent(new MouseEvent('mousedown', {{bubbles:true}}));
-        el.dispatchEvent(new MouseEvent('mouseup', {{bubbles:true}}));
-        el.dispatchEvent(new MouseEvent('click', {{bubbles:true}}));
+        if (!btn) return false;
+
+        btn.scrollIntoView({{block:'center'}});
+
+        // 强制 focus
+        btn.focus();
+
+        // 获取真实点击点
+        const rect = btn.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const el = document.elementFromPoint(x, y);
+        if (el) el.focus();
+
+        const events = [
+            new PointerEvent('pointerdown', {{bubbles:true}}),
+            new MouseEvent('mousedown', {{bubbles:true}}),
+            new MouseEvent('mouseup', {{bubbles:true}}),
+            new MouseEvent('click', {{bubbles:true}})
+        ];
+
+        for (const e of events) {{
+            btn.dispatchEvent(e);
+        }}
+
+        // fallback native click
+        btn.click();
 
         return true;
+
     }})();
     """)
 
 
 # ==========================================================
-# 🎯 Open Linkvertise（增强稳定版）
+# 🎯 Linkvertise click + jump detection
 # ==========================================================
 
 def click_modal_open(sb):
 
-    print("🚀 尝试点击 Open Linkvertise")
+    print("🚀 点击 Open Linkvertise（增强版）")
 
-    # 先记录 URL
     old_url = sb.get_current_url()
 
-    ok = sb.execute_script("""
-    (() => {
-
-        const btns = [...document.querySelectorAll('button')];
-
-        const target = btns.find(b =>
-            (b.innerText || '').includes('Open Linkvertise')
-        );
-
-        if (!target) return false;
-
-        target.scrollIntoView({block:'center'});
-
-        target.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}));
-        target.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
-        target.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
-        target.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-
-        return true;
-
-    })();
-    """)
-
-    if not ok:
-        sb.uc_click("button.iEubrt")
+    ultra_click(sb, "Open Linkvertise")
 
     # ======================================================
-    # 等待跳转 / 新 tab
+    # jump detection (3-layer)
     # ======================================================
 
-    print("⏳ 等待 Linkvertise 跳转...")
+    print("⏳ 等待跳转...")
 
-    for _ in range(20):
+    for _ in range(25):
+
         try:
             url = sb.get_current_url()
 
-            if "linkvertise" in url or url != old_url:
-                print("✅ 已跳转:", url)
+            # 1. URL change
+            if url != old_url:
+                print("✅ URL 已变化:", url)
                 return True
 
+            # 2. linkvertise detect
+            if "linkvertise" in url:
+                print("✅ 已进入 Linkvertise")
+                return True
+
+            # 3. new tab detect
             handles = sb.driver.window_handles
             if len(handles) > 1:
                 sb.switch_to_window(handles[-1])
-                print("✅ 切换到新窗口")
+                print("✅ 新窗口已切换")
                 return True
 
         except:
@@ -186,12 +193,12 @@ def click_modal_open(sb):
 
         time.sleep(1)
 
-    print("⚠️ 未检测到跳转（可能 click 被拦截）")
+    print("❌ 未检测到跳转（click 被拦截 or window.open blocked）")
     return False
 
 
 # ==========================================================
-# 🤖 bot（保持）
+# 🤖 bot
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
@@ -206,6 +213,7 @@ def inject_linkvertise_bot(sb):
 
         function click(el){
             if(!el) return;
+            el.focus();
             el.click();
             el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
         }
