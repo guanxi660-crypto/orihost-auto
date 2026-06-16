@@ -41,52 +41,55 @@ def extract_server_id(sb):
 
 
 # ==========================================================
-# 💀 清 iframe（安全）
+# 🚫 轻量去广告（只做一次）
 # ==========================================================
 
-def clean_ads(sb):
-    sb.execute_script("document.querySelectorAll('iframe').forEach(e=>e.remove())")
+def clean_ads_once(sb):
+    # 只移除 iframe，不做其他 DOM 干预
+    sb.execute_script("""
+        document.querySelectorAll('iframe').forEach(e => {
+            try { e.remove(); } catch(e) {}
+        });
+    """)
 
 
 # ==========================================================
-# 🎯 精准点击 Renew
+# 🎯 点击 Renew（稳定版）
 # ==========================================================
 
 def click_real_renew(sb):
 
     return sb.execute_script("""
     (() => {
-
         const btns = document.querySelectorAll('button');
 
         for (const b of btns) {
-            if ((b.innerText || '').includes('Renew')) {
+            const t = (b.innerText || '').trim();
 
+            if (t.includes('Renew')) {
                 b.scrollIntoView({block:'center'});
 
-                b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
-                b.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
-                b.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
-                b.dispatchEvent(new MouseEvent('click',{bubbles:true}));
-
+                b.dispatchEvent(new MouseEvent('click', {bubbles:true}));
                 return true;
             }
         }
-
         return false;
     })();
     """)
 
 
 # ==========================================================
-# 🎯 等待弹窗
+# 🎯 等待 modal（不依赖固定 id）
 # ==========================================================
 
 def wait_modal(sb):
 
-    for _ in range(15):
-
-        if sb.execute_script("return !!document.querySelector('#headlessui-dialog-1');"):
+    for _ in range(20):
+        modal = sb.execute_script("""
+            return document.querySelector('[role="dialog"]') ||
+                   document.querySelector('div[class*="fixed"]');
+        """)
+        if modal:
             print("✅ 弹窗出现")
             return True
 
@@ -96,27 +99,42 @@ def wait_modal(sb):
 
 
 # ==========================================================
-# 🔥 修复版：点击 Open Linkvertise（核心）
+# 🎯 点击 Open Linkvertise（稳定增强版）
 # ==========================================================
 
 def click_modal_open(sb):
 
-    sb.wait_for_element(
-        "#headlessui-dialog-1 button.iEubrt",
-        timeout=15
-    )
+    # 直接找按钮文本（比 class 稳）
+    sb.wait_for_element_visible("button", timeout=15)
 
-    sb.uc_click(
-        "#headlessui-dialog-1 button.iEubrt"
-    )
+    ok = sb.execute_script("""
+    (() => {
+        const btns = [...document.querySelectorAll('button')];
 
-    print("✅ Open Linkvertise 已真实点击")
+        const target = btns.find(b =>
+            (b.innerText || '').includes('Open Linkvertise')
+        );
 
+        if (target) {
+            target.scrollIntoView({block:'center'});
+            target.click();
+            return true;
+        }
+
+        return false;
+    })();
+    """)
+
+    if not ok:
+        # fallback class
+        sb.uc_click("button.iEubrt")
+
+    print("✅ Open Linkvertise 已点击")
     return True
 
 
 # ==========================================================
-# 🤖 Linkvertise 自动处理（带日志）
+# 🤖 Linkvertise bot（保持）
 # ==========================================================
 
 def inject_linkvertise_bot(sb):
@@ -124,53 +142,49 @@ def inject_linkvertise_bot(sb):
     sb.execute_script("""
     (function(){
 
-        function log(m){ console.log('[AUTO]',m); }
-
         function find(tag,text){
             return [...document.querySelectorAll(tag)]
-                .find(e=>e.innerText && e.innerText.includes(text));
+                .find(e => e.innerText && e.innerText.includes(text));
         }
 
-        function click(el,name){
+        function click(el){
             if(!el) return;
-            log('点击 '+name);
             el.click();
             el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
         }
 
-        setInterval(()=>{
+        setInterval(() => {
 
-            try{
+            try {
 
                 const url = location.href;
-                log('URL: '+url);
 
                 let get = find('button','Get Link');
-                if(get) click(get,'Get Link');
+                if(get) click(get);
 
                 if(url.includes('/access/')){
 
                     let watch = find('div','Watch Ads');
-                    if(watch) click(watch,'Watch Ads');
+                    if(watch) click(watch);
 
                     let cont = find('button','Continue');
-                    if(cont) click(cont,'Continue');
+                    if(cont) click(cont);
                 }
 
                 let skip = find('button','Skip Ad');
-                if(skip) click(skip,'Skip Ad');
+                if(skip) click(skip);
 
                 if(url.includes('/success')){
                     let open = find('button','Open');
                     if(open){
-                        click(open,'Final Open');
+                        click(open);
                         setTimeout(()=>window.close(),2000);
                     }
                 }
 
-            }catch(e){}
+            } catch(e) {}
 
-        },2000);
+        }, 2000);
 
     })();
     """)
@@ -212,7 +226,8 @@ def run():
 
         screenshot(sb, "server_page.png")
 
-        clean_ads(sb)
+        # ✅ 只在这里清一次
+        clean_ads_once(sb)
 
         # ===========================
         # Renew
@@ -233,12 +248,11 @@ def run():
         if not wait_modal(sb):
             return "NO_MODAL"
 
-        if not click_modal_open(sb):
-            return "OPEN_FAIL"
+        click_modal_open(sb)
 
         time.sleep(5)
 
-        # window handle fallback
+        # window switch fallback
         try:
             handles = sb.driver.window_handles
             if len(handles) > 1:
