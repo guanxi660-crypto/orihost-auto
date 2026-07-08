@@ -1,3 +1,0 @@
-seleniumbase==4.49.4
-playwright
-requests
