@@ -29,8 +29,7 @@ jobs:
 
       # ===== 启动 GOST =====
       - name: 🛡️ 启动 GOST
-        # 修复：在 if 条件中直接判断 secret 是否存在
-        if: ${{ secrets.ORIHOST_GOST_PROXY != '' }}
+        if: ${{ env.ORIHOST_GOST_PROXY != '' }}
         env:
           ORIHOST_GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
         run: |
@@ -53,28 +52,3 @@ jobs:
           # 关键修改：传递本地端口而不是原始 Secret 链接
           ORIHOST_GOST_PROXY: "http://127.0.0.1:8080"
         run: python main.py
-      
-      - name: Cleanup old workflow runs
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # 修复：添加 -R ${{ github.repository }} 明确指定操作的仓库
-          runs=$(gh run list \
-            -R "${{ github.repository }}" \
-            --workflow="${{ github.workflow }}" \
-            --limit 100 \
-            --json databaseId \
-            --jq '.[].databaseId')
-
-          count=0
-
-          for run_id in $runs; do
-            count=$((count + 1))
-
-            if [ "$count" -gt 1 ]; then
-              echo "Deleting run: $run_id"
-              # 删除时也需要明确指定仓库
-              gh run delete "$run_id" -R "${{ github.repository }}" || true
-            fi
-          done
