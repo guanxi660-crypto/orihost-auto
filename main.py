@@ -161,7 +161,11 @@ def main():
 
     try:
         ip = s.get("https://api.ipify.org?format=json", timeout=10).json()["ip"]
-        print("🌐 当前IP:", ip)
+        if "." in ip:
+            masked_ip = ".".join(ip.split(".")[:2] + ["**", "**"])
+        else:
+          masked_ip = ip
+        print("🌐 当前IP:", masked_ip)
     except:
         print("⚠️ IP检测失败")
 
