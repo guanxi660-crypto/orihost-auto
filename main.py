@@ -12,22 +12,22 @@ SERVER_ID   = "670475f5"
 SERVER_UUID = "670475f5-1206-48d3-b4ab-e86d75f5a3fd"
 RENEWAL_MAX = 21
 
-REMEMBER_TOKEN      = os.environ.get("ORI_COOKIE", "")
-TG_BOT              = os.environ.get("TG_BOT", "")
-ORIHOST_GOST_PROXY  = os.environ.get("ORIHOST_GOST_PROXY", "")
+REMEMBER_TOKEN = os.environ.get("ORI_COOKIE", "")
+TG_BOT         = os.environ.get("TG_BOT", "")
+GOST_PROXY     = os.environ.get("ORIHOST_GOST_PROXY", "")
 
 TG_ID, TG_TOKEN = TG_BOT.split(",", 1) if TG_BOT else (None, None)
 
 # ===== 代理 =====
-if ORIHOST_GOST_PROXY:
+if GOST_PROXY:
     PROXIES = {
-        "http":  "http://127.0.0.1:8080",
-        "https": "http://127.0.0.1:8080"
+        "http":  GOST_PROXY,
+        "https": GOST_PROXY
     }
     print("🛡️ 使用 GOST 代理")
 else:
     PROXIES = None
-    print("🌐 直连模式（可能失败）")
+    print("🌐 直连模式")
 
 # ===== 工具 =====
 def send_tg(msg):
@@ -48,23 +48,35 @@ def make_session(token):
     if PROXIES:
         s.proxies.update(PROXIES)
 
-    s.headers.update({"User-Agent": "Mozilla/5.0"})
+    s.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    })
 
-    # 只设置 remember_web
+    # 设置 remember_web
     s.cookies.set(
         "remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d",
         token,
         domain="panel.orihost.com"
     )
 
-    # 刷页面拿 XSRF
-    s.get(f"{PANEL_URL}/server/{SERVER_ID}", timeout=15)
+    # 多次尝试获取 XSRF（兼容 CF）
+    for i in range(5):
+        try:
+            r = s.get(f"{PANEL_URL}/dashboard", timeout=20)
+            xsrf = s.cookies.get("XSRF-TOKEN")
 
-    xsrf = s.cookies.get("XSRF-TOKEN")
-    if not xsrf:
-        raise Exception("❌ XSRF 获取失败（Cookie失效）")
+            if xsrf:
+                return s, requests.utils.unquote(xsrf)
 
-    return s, requests.utils.unquote(xsrf)
+            print(f"⚠️ 第{i+1}次未获取到 XSRF，重试...")
+            time.sleep(3)
+
+        except Exception as e:
+            print("⚠️ 请求异常:", e)
+            time.sleep(3)
+
+    raise Exception("❌ XSRF 获取失败（Cookie失效或IP被CF拦截）")
 
 def build_headers(xsrf):
     return {
@@ -72,11 +84,12 @@ def build_headers(xsrf):
         "X-Requested-With": "XMLHttpRequest",
         "X-XSRF-TOKEN": xsrf,
         "Referer": f"{PANEL_URL}/server/{SERVER_ID}",
+        "User-Agent": "Mozilla/5.0"
     }
 
-# ===== 查询 =====
+# ===== 信息 =====
 def get_info(s, h):
-    r = s.get(f"{PANEL_URL}/api/client/servers/{SERVER_ID}", headers=h, timeout=15)
+    r = s.get(f"{PANEL_URL}/api/client/servers/{SERVER_ID}", headers=h)
     if not r.ok:
         raise Exception("获取服务器信息失败")
 
@@ -94,11 +107,10 @@ def get_info(s, h):
 
     return renewal, days
 
-# ===== 续期 =====
+# ===== 核心续期 =====
 def do_renew(s, h):
     try:
-        # begin
-        r = s.post(f"{PANEL_URL}/api/client/servers/{SERVER_UUID}/renew/begin", headers=h, timeout=15)
+        r = s.post(f"{PANEL_URL}/api/client/servers/{SERVER_UUID}/renew/begin", headers=h, timeout=20)
 
         if not r.ok:
             print("❌ begin失败:", r.text[:100])
@@ -110,22 +122,20 @@ def do_renew(s, h):
         wait   = data.get("dwell_seconds", 15)
 
         if not ad_url:
-            print("⚠️ 没有广告（IP被识别）")
+            print("⚠️ 没有广告（IP问题）")
             return False
 
         print(f"🌐 广告: {ad_url}")
         print(f"⏳ 停留: {wait}s")
 
-        # 打开广告
         try:
             s.get(ad_url, timeout=20)
         except:
-            print("⚠️ 广告访问失败（继续）")
+            pass
 
         time.sleep(wait + 3)
 
-        # claim
-        r2 = s.post(f"{PANEL_URL}/api/client/servers/{SERVER_UUID}/renew/claim", headers=h, timeout=15)
+        r2 = s.post(f"{PANEL_URL}/api/client/servers/{SERVER_UUID}/renew/claim", headers=h, timeout=20)
 
         if r2.status_code in (200, 204):
             print("✅ claim成功")
@@ -148,7 +158,6 @@ def main():
     s, xsrf = make_session(REMEMBER_TOKEN)
     h = build_headers(xsrf)
 
-    # IP检测
     try:
         ip = s.get("https://api.ipify.org?format=json", timeout=10).json()["ip"]
         print("🌐 当前IP:", ip)
@@ -159,7 +168,7 @@ def main():
     print(f"📅 当前: {renewal} 次 / {days} 天")
 
     if renewal >= RENEWAL_MAX:
-        print("⏭️ 已满21天，跳过")
+        print("⏭️ 已满21天")
         return
 
     count = 0
@@ -167,7 +176,6 @@ def main():
     while renewal < RENEWAL_MAX:
         ok = do_renew(s, h)
         if not ok:
-            print("🛑 停止续期（IP可能不行）")
             break
 
         count += 1
@@ -180,5 +188,6 @@ def main():
 
     send_tg(f"🎮 Orihost续期\n次数: {count}\n剩余: {days}天")
 
+# ===== 入口 =====
 if __name__ == "__main__":
     main()
