@@ -19,7 +19,7 @@ jobs:
           path: private
 
       - name: 📂 复制脚本
-        run: cp private/orihost_renew.py main.py
+        run: cp private/main.py main.py
 
       - name: 🐍 安装依赖
         run: pip install requests
