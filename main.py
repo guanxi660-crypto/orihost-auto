@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import requests
+from curl_cffi import requests
+import urllib.parse
 import time
 import os
 from datetime import datetime, timezone
@@ -24,7 +25,7 @@ if GOST_PROXY:
         "http":  GOST_PROXY,
         "https": GOST_PROXY
     }
-    print("🛡️ 使用 GOST 代理")
+    print("🛡️ 使用代理配置:", GOST_PROXY)
 else:
     PROXIES = None
     print("🌐 直连模式")
@@ -37,19 +38,20 @@ def send_tg(msg):
         requests.post(
             f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
             json={"chat_id": TG_ID, "text": msg},
-            timeout=10
+            timeout=10,
+            impersonate="chrome120"
         )
     except:
         pass
 
 def make_session(token):
-    s = requests.Session()
+    # 添加 impersonate 伪装成真实的 Chrome 浏览器，对抗 CF 盾
+    s = requests.Session(impersonate="chrome120")
 
     if PROXIES:
         s.proxies.update(PROXIES)
 
     s.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     })
 
@@ -67,9 +69,9 @@ def make_session(token):
             xsrf = s.cookies.get("XSRF-TOKEN")
 
             if xsrf:
-                return s, requests.utils.unquote(xsrf)
+                return s, urllib.parse.unquote(xsrf)
 
-            print(f"⚠️ 第{i+1}次未获取到 XSRF，重试...")
+            print(f"⚠️ 第{i+1}次未获取到 XSRF，状态码: {r.status_code}，重试...")
             time.sleep(3)
 
         except Exception as e:
@@ -84,7 +86,6 @@ def build_headers(xsrf):
         "X-Requested-With": "XMLHttpRequest",
         "X-XSRF-TOKEN": xsrf,
         "Referer": f"{PANEL_URL}/server/{SERVER_ID}",
-        "User-Agent": "Mozilla/5.0"
     }
 
 # ===== 信息 =====
