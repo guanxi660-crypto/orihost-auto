@@ -11,9 +11,6 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: 📥 Checkout 当前仓库
-        uses: actions/checkout@v4
-
       - name: 📥 拉取私库脚本
         uses: actions/checkout@v4
         with:
@@ -27,9 +24,12 @@ jobs:
       - name: 🐍 安装依赖
         run: |
           python -m pip install --upgrade pip
+          # 替换为 curl_cffi 库来对抗 Cloudflare
           pip install curl_cffi
 
+      # ===== 启动 GOST =====
       - name: 🛡️ 启动 GOST
+        # 修复：在 if 条件中直接判断 secret 是否存在
         if: ${{ secrets.ORIHOST_GOST_PROXY != '' }}
         env:
           ORIHOST_GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
@@ -39,32 +39,29 @@ jobs:
           tar -xzf "gost_${VERSION}_linux_amd64.tar.gz"
           chmod +x gost
 
+          # 将代理映射到本地 8080 端口
           nohup ./gost -L http://:8080 -F "$ORIHOST_GOST_PROXY" > gost.log 2>&1 &
           sleep 3
 
-          echo "🌐 当前代理IP："
+          echo "🌐 当前代理IP（测试本地转发）："
           curl -s -x http://127.0.0.1:8080 https://api.ipify.org | sed 's/\([0-9]*\.[0-9]*\.\)[0-9]*\.[0-9]*/\1**.**/g'
 
       - name: 🚀 执行续期
         env:
           ORI_COOKIE: ${{ secrets.ORI_COOKIE }}
           TG_BOT: ${{ secrets.TG_BOT }}
+          # 关键修改：传递本地端口而不是原始 Secret 链接
           ORIHOST_GOST_PROXY: "http://127.0.0.1:8080"
         run: python main.py
-
-      - name: 🔧 安装 gh CLI
-        run: |
-          type gh || (sudo apt-get update && sudo apt-get install gh -y)
-
-      - name: 🧹 Cleanup old workflow runs
+      
+      - name: Cleanup old workflow runs
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          REPO="${{ github.repository }}"
-
+          # 修复：添加 -R ${{ github.repository }} 明确指定操作的仓库
           runs=$(gh run list \
-            --repo "$REPO" \
+            -R "${{ github.repository }}" \
             --workflow="${{ github.workflow }}" \
             --limit 100 \
             --json databaseId \
@@ -74,8 +71,10 @@ jobs:
 
           for run_id in $runs; do
             count=$((count + 1))
+
             if [ "$count" -gt 1 ]; then
               echo "Deleting run: $run_id"
-              gh run delete "$run_id" --repo "$REPO" || true
+              # 删除时也需要明确指定仓库
+              gh run delete "$run_id" -R "${{ github.repository }}" || true
             fi
           done
