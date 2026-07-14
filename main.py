@@ -194,9 +194,10 @@ def main():
 
     try:
         ip = s.get("https://api.ipify.org?format=json", timeout=10).json()["ip"]
-        print("🌐 IP:", ip)
-    except:
-        pass
+        short_ip = ".".join(ip.split(".")[:2])
+        print("🌐 IP:", short_ip)
+    except Exception as e:
+        print("❌ 获取IP失败:", e)
 
     renewal, days = get_info(s, h)
     print(f"📅 当前: {renewal} / {days}天")
