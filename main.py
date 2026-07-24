@@ -162,7 +162,7 @@ def do_renew(s, h):
 
         # claim（带重试）
         for i in range(3):
-            r2 = s.post(f"{PANEL_URL}/api/client/renewal/complete", headers=h, timeout=20)
+            r2 = s.get(f"{PANEL_URL}/api/client/renewal/complete", headers=h, timeout=20)
 
             if r2.status_code in (200,204):
                 print("✅ 成功")
