@@ -6,7 +6,7 @@
 
 ## ✨ 本 fork 的改进
 
-- ✅ **修复 GOST 代理失效 bug**：原版 `if: ${{ env.ORIHOST_GOST_PROXY != '' }}` 读的是 step 自己的 env（恒为 false），代理步骤从未执行过；改为直接判断 `secrets` 上下文
+- ✅ **修复 GOST 代理失效 bug**：原版 `if: ${{ env.ORIHOST_GOST_PROXY != '' }}` 读的是 step 自己的 env（恒为 false），代理步骤从未执行过；改为 Secret 提升到 job 级 env、`if` 用 `env.X` 判断（`if` 条件不能用 `secrets` 上下文，GHA 硬限制）
 - ✅ **新增 xray 代理**（`scripts/setup_proxy.sh`，收编自 eooce 系四协议解析脚本）：支持 vless / vmess / trojan / socks5 分享链接，自动起本地 SOCKS5:1080 + HTTP:1081 双入站
 - ✅ **代理优先级**：`NODE_LINK`（xray）→ `ORIHOST_GOST_PROXY`（GOST 兜底）→ 直连
 - ✅ **修复 xray 证书校验坑**：锁 v1.8.24（v24+ 移除 `allowInsecure`），家宽/自建 CN-only 证书可正常连接，默认 `insecure=true`
