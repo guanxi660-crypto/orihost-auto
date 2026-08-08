@@ -10,6 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # job 级 env：step 的 if 只能读 job/workflow 级 env（读不到 secrets 上下文），
+    # 所以把代理 Secret 提升到 job 级，if 用 env.X 判断；GitHub 日志会自动脱敏
+    env:
+      NODE_LINK: ${{ secrets.NODE_LINK }}
+      ORIHOST_GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
+
     steps:
       - name: 📥 检出仓库
         uses: actions/checkout@v4
@@ -26,14 +32,12 @@ jobs:
       # 测通后写 IS_PROXY / PROXY_SERVER 到 $GITHUB_ENV
       # 注意：xray 内核不支持 hysteria2/tuic/anytls（sing-box 特性）
       - name: 🛡️ 启动 xray 代理
-        if: ${{ secrets.NODE_LINK != '' }}
-        env:
-          NODE_LINK: ${{ secrets.NODE_LINK }}
+        if: ${{ env.NODE_LINK != '' }}
         run: bash scripts/setup_proxy.sh
 
       # ===== GOST 代理兜底（未配 NODE_LINK 时用）=====
       - name: 🛡️ 启动 GOST 代理（兜底）
-        if: ${{ secrets.NODE_LINK == '' && secrets.ORIHOST_GOST_PROXY != '' }}
+        if: ${{ env.NODE_LINK == '' && env.ORIHOST_GOST_PROXY != '' }}
         env:
           GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
         run: |
