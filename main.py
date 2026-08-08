@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 # ===== 配置 =====
 PANEL_URL   = "https://panel.orihost.com"
-SERVER_ID   = "670475f5"
+SERVER_ID   = "aeffa7b5"
 SERVER_UUID = "670475f5-1206-48d3-b4ab-e86d75f5a3fd"
 RENEWAL_MAX = 21
 
