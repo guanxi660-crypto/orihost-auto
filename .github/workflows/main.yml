@@ -8,30 +8,32 @@ on:
 jobs:
   renew:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: 📥 拉取私库脚本
+      - name: 📥 检出仓库
         uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/orihost-auto
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          path: private
-
-      - name: 📂 复制脚本
-        run: cp private/main.py main.py
 
       - name: 🐍 安装依赖
         run: |
           python -m pip install --upgrade pip
-          # 替换为 curl_cffi 库来对抗 Cloudflare
           pip install curl_cffi
 
-      # ===== 启动 GOST =====
-      - name: 🛡️ 启动 GOST
-        if: ${{ env.ORIHOST_GOST_PROXY != '' }}
+      # ===== sing-box 代理（NODE_LINK 七协议，优先）=====
+      # NODE_LINK 支持 vless/vmess/trojan/hy2/tuic/anytls/socks5 分享链接
+      # 自动下载 sing-box、解析链接、起本地 SOCKS5:1080 + HTTP:1081 双入站，
+      # 测通后写 IS_PROXY / PROXY_SERVER 到 $GITHUB_ENV
+      - name: 🛡️ 启动 sing-box 代理
+        if: ${{ secrets.NODE_LINK != '' }}
         env:
-          ORIHOST_GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
+          NODE_LINK: ${{ secrets.NODE_LINK }}
+        run: bash scripts/setup_proxy.sh
+
+      # ===== GOST 代理兜底（未配 NODE_LINK 时用）=====
+      - name: 🛡️ 启动 GOST 代理（兜底）
+        if: ${{ secrets.NODE_LINK == '' && secrets.ORIHOST_GOST_PROXY != '' }}
+        env:
+          GOST_PROXY: ${{ secrets.ORIHOST_GOST_PROXY }}
         run: |
           VERSION=$(curl -s https://api.github.com/repos/ginuerzh/gost/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')
           wget -q "https://github.com/ginuerzh/gost/releases/download/v${VERSION}/gost_${VERSION}_linux_amd64.tar.gz"
@@ -39,7 +41,7 @@ jobs:
           chmod +x gost
 
           # 将代理映射到本地 8080 端口
-          nohup ./gost -L http://:8080 -F "$ORIHOST_GOST_PROXY" > gost.log 2>&1 &
+          nohup ./gost -L http://:8080 -F "$GOST_PROXY" > gost.log 2>&1 &
           sleep 3
 
           echo "🌐 当前代理IP（测试本地转发）："
@@ -49,6 +51,6 @@ jobs:
         env:
           ORI_COOKIE: ${{ secrets.ORI_COOKIE }}
           TG_BOT: ${{ secrets.TG_BOT }}
-          # 关键修改：传递本地端口而不是原始 Secret 链接
-          ORIHOST_GOST_PROXY: "http://127.0.0.1:8080"
+          # sing-box 优先（写入 PROXY_SERVER），未配置则回退 GOST secret
+          ORIHOST_GOST_PROXY: ${{ env.PROXY_SERVER || secrets.ORIHOST_GOST_PROXY }}
         run: python main.py
