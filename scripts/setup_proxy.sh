@@ -1,5 +1,7 @@
 #!/bin/bash
-# setup_proxy.sh - 代理节点解析与 sing-box 启动
+# setup_proxy.sh - 代理节点解析与 xray-core 启动
+# 支持协议: vless / vmess / trojan / socks5
+# (xray 内核不支持 hysteria2/tuic/anytls，这些是 sing-box 特性)
 export LC_ALL=C
 set -e
 
@@ -17,39 +19,36 @@ if ! command -v jq &> /dev/null; then
   sudo apt-get update && sudo apt-get install -y jq
 fi
 
-command -v curl &>/dev/null && COMMAND="curl -so" || command -v wget &>/dev/null && COMMAND="wget -qO" || { red "Error: neither curl nor wget found, please install one of them." >&2; exit 1; }
-
-echo "[INFO] 获取 sing-box 最新版本..."
-latest_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases" | jq -r '[.[] | select(.prerelease==false)][0].tag_name | sub("^v"; "")')
-if [ -z "$latest_version" ]; then
-  echo "[ERROR] 无法获取 sing-box 最新版本,将下载v1.13.14"
-  export latest_version=1.13.14
+if ! command -v unzip &> /dev/null; then
+  echo "[ERROR] unzip 未安装，正在安装..."
+  sudo apt-get update && sudo apt-get install -y unzip
 fi
-echo "[INFO] 最新稳定版本: v${latest_version}"
+
+command -v curl &>/dev/null && COMMAND="curl -so" || command -v wget &>/dev/null && COMMAND="wget -qO" || { echo "Error: neither curl nor wget found" >&2; exit 1; }
+
+# 固定 v1.8.24：xray v24+ 移除了 allowInsecure（改 pinnedPeerCertSha256），
+# 家宽/自建节点证书多为旧式(CN-only/自签)，必须保留跳过校验能力
+echo "[INFO] 使用 xray-core v1.8.24 (兼容 allowInsecure)"
+latest_version=1.8.24
 
 ARCH_RAW=$(uname -m)
 case "${ARCH_RAW}" in
-    'x86_64' | 'amd64')  ARCH='amd64' ;;
-    'x86' | 'i686' | 'i386') ARCH='386' ;;
-    'aarch64' | 'arm64') ARCH='arm64' ;;
-    'armv7l')  ARCH='armv7' ;;
-    's390x')   ARCH='s390x' ;;
+    'x86_64' | 'amd64')  ASSET='Xray-linux-64.zip' ;;
+    'aarch64' | 'arm64') ASSET='Xray-linux-arm64-v8a.zip' ;;
     *) echo "不支持的架构: ${ARCH_RAW}"; exit 1 ;;
 esac
 
-$COMMAND sing-box-${latest_version}-linux-${ARCH}.tar.gz "https://github.com/SagerNet/sing-box/releases/download/v${latest_version}/sing-box-${latest_version}-linux-${ARCH}.tar.gz"
-tar -xzf "sing-box-${latest_version}-linux-${ARCH}.tar.gz"
-mv "sing-box-${latest_version}-linux-${ARCH}/sing-box" ./
-rm -f "sing-box-${latest_version}-linux-${ARCH}.tar.gz"
-rm -rf "sing-box-${latest_version}-linux-${ARCH}"
-chmod +x sing-box
+$COMMAND xray.zip "https://github.com/XTLS/Xray-core/releases/download/v${latest_version}/${ASSET}"
+unzip -o -q xray.zip -d xray-dist
+mv xray-dist/xray ./
+rm -rf "xray-dist" "xray.zip"
+chmod +x xray
 
 proto=$(echo "$NODE_LINK" | cut -d':' -f1)
 content="${NODE_LINK#*://}"
 content="${content%%#*}"
 
 echo "[INFO] 协议: $proto"
-# echo "[INFO] 原始内容: $content"
 
 # 初始化变量
 outbound_type=""
@@ -66,21 +65,11 @@ outbound_fingerprint="chrome"
 outbound_reality_pbk=""
 outbound_reality_sid=""
 outbound_password=""
-outbound_up_mbps=100
-outbound_down_mbps=100
-outbound_obfs_password=""
-outbound_auth=""
-outbound_congestion="bbr"
-outbound_udp_over_stream="true"
-outbound_zerortt="false"
 outbound_username=""
 outbound_password2=""
-outbound_version="5"
-# sing-box v1.13+ 默认强制校验 TLS 证书并要求 SAN 字段，
-# 家宽/自建节点证书多为 CN-only（旧式），会被拒连（CRYPTO_ERROR 0x12a）
-# 默认关闭校验；链接带 insecure=1 / allowInsecure=1 时按链接参数覆盖
+outbound_aid=0
+outbound_scy="auto"
 outbound_insecure="true"
-outbound_alpn=""
 
 # 辅助函数：URL 解码
 url_decode() {
@@ -161,6 +150,8 @@ case "$proto" in
     outbound_server="$add"
     outbound_port="$port"
     outbound_uuid="$id"
+    outbound_aid="$aid"
+    outbound_scy="$scy"
     outbound_transport_type="$net"
     outbound_host="${host:-$add}"
     outbound_sni="${sni:-$add}"
@@ -207,111 +198,6 @@ case "$proto" in
     [ -z "$outbound_sni" ] && outbound_sni="$outbound_server"
     ;;
 
-  hysteria2|hy2)
-    auth=""
-    if [[ "$content" == *"@"* ]]; then
-      auth="${content%%@*}"
-      host_port="${content#*@}"
-    else
-      host_port="$content"
-    fi
-    if [[ "$host_port" == *"?"* ]]; then
-      hp="${host_port%%\?*}"
-      query="${host_port#*\?}"
-    else
-      hp="$host_port"
-      query=""
-    fi
-    hp="${hp%/}"                    
-    outbound_server="${hp%:*}"
-    outbound_port="${hp#*:}"
-    outbound_type="hysteria2"
-    outbound_auth="$auth"
-    
-    if [ -n "$query" ]; then
-      obfs=$(echo "$query" | grep -o 'obfs=[^&]*' | cut -d= -f2)
-      [ -n "$obfs" ] && outbound_obfs_password="$obfs"
-      sni=$(echo "$query" | grep -o 'sni=[^&]*' | cut -d= -f2)
-      [ -n "$sni" ] && outbound_sni="$sni"
-      fp=$(echo "$query" | grep -o 'fp=[^&]*' | cut -d= -f2)
-      [ -n "$fp" ] && outbound_fingerprint="$fp"
-      ins=$(echo "$query" | grep -o 'insecure=[^&]*' | cut -d= -f2)
-      [ "$ins" = "1" ] || [ "$ins" = "true" ] && outbound_insecure="true"
-      alins=$(echo "$query" | grep -o 'allowInsecure=[^&]*' | cut -d= -f2)
-      [ "$alins" = "1" ] || [ "$alins" = "true" ] && outbound_insecure="true"
-    fi
-    [ -z "$outbound_sni" ] && outbound_sni="$outbound_server"
-    ;;
-
-  tuic)
-    # 分离 uuid:password 部分（用 %3A 分隔）
-    uuid_pass="${content%%@*}"
-    rest="${content#*@}"
-    # 替换 %3A 为 :
-    uuid_pass_clean=$(echo "$uuid_pass" | sed 's/%3A/:/g')
-    if [[ "$uuid_pass_clean" == *":"* ]]; then
-      outbound_uuid="${uuid_pass_clean%:*}"
-      outbound_password2="${uuid_pass_clean#*:}"
-    else
-      outbound_uuid="$uuid_pass_clean"
-      outbound_password2=""
-    fi
-    # 解析 host:port 和 query
-    if [[ "$rest" == *"?"* ]]; then
-      host_port="${rest%%\?*}"
-      query="${rest#*\?}"
-    else
-      host_port="$rest"
-      query=""
-    fi
-    outbound_server="${host_port%:*}"
-    outbound_port="${host_port#*:}"
-    outbound_type="tuic"
-    # 解析参数
-    if [ -n "$query" ]; then
-      sni=$(echo "$query" | grep -o 'sni=[^&]*' | cut -d= -f2)
-      [ -n "$sni" ] && outbound_sni="$sni"
-      fp=$(echo "$query" | grep -o 'fp=[^&]*' | cut -d= -f2)
-      [ -n "$fp" ] && outbound_fingerprint="$fp"
-      ins=$(echo "$query" | grep -o 'insecure=[^&]*' | cut -d= -f2)
-      [ "$ins" = "1" ] || [ "$ins" = "true" ] && outbound_insecure="true"
-      alins=$(echo "$query" | grep -o 'allowInsecure=[^&]*' | cut -d= -f2)
-      [ "$alins" = "1" ] || [ "$alins" = "true" ] && outbound_insecure="true"
-      cc=$(echo "$query" | grep -o 'congestion_control=[^&]*' | cut -d= -f2)
-      [ -n "$cc" ] && outbound_congestion="$cc"
-      alpn=$(echo "$query" | grep -o 'alpn=[^&]*' | cut -d= -f2)
-      [ -n "$alpn" ] && outbound_alpn="$alpn"
-    fi
-    [ -z "$outbound_sni" ] && outbound_sni="$outbound_server"
-    ;;
-
-  anytls)
-    password="${content%%@*}"
-    rest="${content#*@}"
-    if [[ "$rest" == *"?"* ]]; then
-      host_port="${rest%%\?*}"
-      query="${rest#*\?}"
-    else
-      host_port="$rest"
-      query=""
-    fi
-    outbound_server="${host_port%:*}"
-    outbound_port="${host_port#*:}"
-    outbound_password="$password"
-    outbound_type="anytls"
-    if [ -n "$query" ]; then
-      sni=$(echo "$query" | grep -o 'sni=[^&]*' | cut -d= -f2)
-      [ -n "$sni" ] && outbound_sni="$sni"
-      fp=$(echo "$query" | grep -o 'fp=[^&]*' | cut -d= -f2)
-      [ -n "$fp" ] && outbound_fingerprint="$fp"
-      ins=$(echo "$query" | grep -o 'insecure=[^&]*' | cut -d= -f2)
-      [ "$ins" = "1" ] || [ "$ins" = "true" ] && outbound_insecure="true"
-      alins=$(echo "$query" | grep -o 'allowInsecure=[^&]*' | cut -d= -f2)
-      [ "$alins" = "1" ] || [ "$alins" = "true" ] && outbound_insecure="true"
-    fi
-    [ -z "$outbound_sni" ] && outbound_sni="$outbound_server"
-    ;;
-
   socks5|socks)
     if [[ "$content" == *"@"* ]]; then
       user_pass="${content%%@*}"
@@ -337,9 +223,8 @@ case "$proto" in
     outbound_type="socks"
     ;;
 
-
   *)
-    echo "[ERROR] 不支持的协议: $proto"
+    echo "[ERROR] 不支持的协议: $proto (xray 内核仅支持 vless/vmess/trojan/socks5)"
     exit 1
     ;;
 esac
@@ -349,99 +234,93 @@ if [ -z "$outbound_server" ] || [ -z "$outbound_port" ]; then
   exit 1
 fi
 
-# 构建 outbound 对象
-jq_outbound="{\"type\":\"$outbound_type\",\"tag\":\"proxy\",\"server\":\"$outbound_server\",\"server_port\":$outbound_port"
+# ============ xray outbound 生成 ============
+# 生成 streamSettings（传输层 + TLS/Reality）
+gen_stream() {
+  local net="$1" sec="$2"
+  local stream="{\"network\":\"$net\""
+  case "$net" in
+    ws)
+      stream="$stream,\"wsSettings\":{\"path\":\"$outbound_path\",\"headers\":{\"Host\":\"$outbound_host\"}}"
+      ;;
+    grpc)
+      stream="$stream,\"grpcSettings\":{\"serviceName\":\"$outbound_path\"}"
+      ;;
+    kcp)
+      [ -n "$outbound_path" ] && [ "$outbound_path" != "/" ] && stream="$stream,\"kcpSettings\":{\"seed\":\"$outbound_path\"}"
+      ;;
+    http|h2)
+      stream="$stream,\"httpSettings\":{\"host\":[\"$outbound_host\"],\"path\":\"$outbound_path\"}"
+      ;;
+  esac
+  case "$sec" in
+    tls)
+      stream="$stream,\"security\":\"tls\",\"tlsSettings\":{\"serverName\":\"$outbound_sni\",\"allowInsecure\":true,\"fingerprint\":\"$outbound_fingerprint\"}"
+      ;;
+    reality)
+      stream="$stream,\"security\":\"reality\",\"realitySettings\":{\"serverName\":\"$outbound_sni\",\"fingerprint\":\"$outbound_fingerprint\",\"publicKey\":\"$outbound_reality_pbk\",\"shortId\":\"$outbound_reality_sid\"}"
+      ;;
+    *)
+      stream="$stream,\"security\":\"none\""
+      ;;
+  esac
+  stream="$stream}"
+  echo "$stream"
+}
 
 case "$outbound_type" in
   vless)
-    jq_outbound="$jq_outbound,\"uuid\":\"$outbound_uuid\""
-    [ -n "$outbound_flow" ] && jq_outbound="$jq_outbound,\"flow\":\"$outbound_flow\""
-    if [ "$outbound_transport_type" != "tcp" ]; then
-      jq_outbound="$jq_outbound,\"transport\":{\"type\":\"$outbound_transport_type\",\"path\":\"$outbound_path\",\"headers\":{\"Host\":\"$outbound_host\"}}"
-    fi
-    tls_enabled="false"
-    [ "$outbound_security" = "tls" ] || [ "$outbound_security" = "reality" ] && tls_enabled="true"
-    tls_json="{\"enabled\":$tls_enabled,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure,\"utls\":{\"enabled\":true,\"fingerprint\":\"$outbound_fingerprint\"}"
-    [ "$outbound_security" = "reality" ] && tls_json="$tls_json,\"reality\":{\"enabled\":true,\"public_key\":\"$outbound_reality_pbk\",\"short_id\":\"$outbound_reality_sid\"}"
-    tls_json="$tls_json}"
-    jq_outbound="$jq_outbound,\"tls\":$tls_json"
+    users="{\"id\":\"$outbound_uuid\",\"encryption\":\"none\""
+    [ -n "$outbound_flow" ] && users="$users,\"flow\":\"$outbound_flow\""
+    users="$users}"
+    jq_outbound="{\"protocol\":\"vless\",\"settings\":{\"vnext\":[{\"address\":\"$outbound_server\",\"port\":$outbound_port,\"users\":[$users]}]},\"streamSettings\":$(gen_stream "$outbound_transport_type" "$outbound_security")}"
     ;;
   vmess)
-    jq_outbound="$jq_outbound,\"uuid\":\"$outbound_uuid\",\"security\":\"auto\""
-    jq_outbound="$jq_outbound,\"transport\":{\"type\":\"$outbound_transport_type\",\"path\":\"$outbound_path\",\"headers\":{\"Host\":\"$outbound_host\"}}"
-    tls_enabled="false"
-    [ "$outbound_security" = "tls" ] && tls_enabled="true"
-    jq_outbound="$jq_outbound,\"tls\":{\"enabled\":$tls_enabled,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure,\"utls\":{\"enabled\":true,\"fingerprint\":\"$outbound_fingerprint\"}}"
+    jq_outbound="{\"protocol\":\"vmess\",\"settings\":{\"vnext\":[{\"address\":\"$outbound_server\",\"port\":$outbound_port,\"users\":[{\"id\":\"$outbound_uuid\",\"alterId\":$outbound_aid,\"security\":\"$outbound_scy\"}]}]},\"streamSettings\":$(gen_stream "$outbound_transport_type" "$outbound_security")}"
     ;;
   trojan)
-    jq_outbound="$jq_outbound,\"password\":\"$outbound_password\""
-    jq_outbound="$jq_outbound,\"transport\":{\"type\":\"$outbound_transport_type\",\"path\":\"$outbound_path\",\"headers\":{\"Host\":\"$outbound_host\"}}"
-    jq_outbound="$jq_outbound,\"tls\":{\"enabled\":true,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure,\"utls\":{\"enabled\":true,\"fingerprint\":\"$outbound_fingerprint\"}}"
-    ;;
-  hysteria2)
-    jq_outbound="$jq_outbound,\"up_mbps\":$outbound_up_mbps,\"down_mbps\":$outbound_down_mbps"
-    [ -n "$outbound_obfs_password" ] && jq_outbound="$jq_outbound,\"obfs\":{\"type\":\"salamander\",\"password\":\"$outbound_obfs_password\"}"
-    [ -n "$outbound_auth" ] && jq_outbound="$jq_outbound,\"password\":\"$outbound_auth\""
-    jq_outbound="$jq_outbound,\"tls\":{\"enabled\":true,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure}"
-    ;;
-  tuic)
-    jq_outbound="$jq_outbound,\"uuid\":\"$outbound_uuid\""
-    [ -n "$outbound_password2" ] && jq_outbound="$jq_outbound,\"password\":\"$outbound_password2\""
-    jq_outbound="$jq_outbound,\"congestion_control\":\"$outbound_congestion\",\"udp_over_stream\":$outbound_udp_over_stream,\"zero_rtt_handshake\":$outbound_zerortt"
-    tls_json="{\"enabled\":true,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure"
-    if [ -n "$outbound_alpn" ]; then
-      tls_json="$tls_json,\"alpn\":[\"$outbound_alpn\"]"
-    fi
-    tls_json="$tls_json}"
-    jq_outbound="$jq_outbound,\"tls\":$tls_json"
-    ;;
-  anytls)
-    jq_outbound="$jq_outbound,\"password\":\"$outbound_password\""
-    jq_outbound="$jq_outbound,\"tls\":{\"enabled\":true,\"server_name\":\"$outbound_sni\",\"insecure\":$outbound_insecure,\"utls\":{\"enabled\":true,\"fingerprint\":\"$outbound_fingerprint\"}}"
+    jq_outbound="{\"protocol\":\"trojan\",\"settings\":{\"servers\":[{\"address\":\"$outbound_server\",\"port\":$outbound_port,\"password\":\"$outbound_password\",\"level\":0}]},\"streamSettings\":$(gen_stream "$outbound_transport_type" "$outbound_security")}"
     ;;
   socks)
-    [ -n "$outbound_username" ] && jq_outbound="$jq_outbound,\"username\":\"$outbound_username\""
-    [ -n "$outbound_password2" ] && jq_outbound="$jq_outbound,\"password\":\"$outbound_password2\""
-    jq_outbound="$jq_outbound,\"version\":\"$outbound_version\""
+    if [ -n "$outbound_username" ]; then
+      jq_outbound="{\"protocol\":\"socks\",\"settings\":{\"servers\":[{\"address\":\"$outbound_server\",\"port\":$outbound_port,\"users\":[{\"user\":\"$outbound_username\",\"pass\":\"$outbound_password2\"}]}]}}"
+    else
+      jq_outbound="{\"protocol\":\"socks\",\"settings\":{\"servers\":[{\"address\":\"$outbound_server\",\"port\":$outbound_port}]}}"
+    fi
     ;;
 esac
-jq_outbound="$jq_outbound}"
 
-# 生成配置（无 udp 字段）
-cat << EOF > sing-box-config.json
+# 生成 xray 配置
+cat << EOF > xray-config.json
 {
-  "log": {"level": "warn"},
+  "log": {"loglevel": "warning"},
   "inbounds": [
-    {"type": "socks", "tag": "socks-in", "listen": "127.0.0.1", "listen_port": 1080},
-    {"type": "http", "tag": "http-in", "listen": "127.0.0.1", "listen_port": 1081}
+    {"listen": "127.0.0.1", "port": 1080, "protocol": "socks", "settings": {"udp": true, "auth": "noauth"}},
+    {"listen": "127.0.0.1", "port": 1081, "protocol": "http"}
   ],
   "outbounds": [$jq_outbound]
 }
 EOF
 
-# echo "[DEBUG] 生成的 sing-box 配置:"
-# cat sing-box-config.json
-
-if ! jq empty sing-box-config.json 2>/dev/null; then
-  echo "[ERROR] 生成的 sing-box 配置无效"
-  # cat sing-box-config.json
+if ! jq empty xray-config.json 2>/dev/null; then
+  echo "[ERROR] 生成的 xray 配置无效"
   exit 1
 fi
 
-echo "[INFO] ✅ sing-box 配置已生成"
+echo "[INFO] ✅ xray 配置已生成"
 
 # 清理旧进程
 echo "[INFO] 清理旧进程..."
-pkill -f sing-box 2>/dev/null || true
+pkill -f xray 2>/dev/null || true
 fuser -k 1080/tcp 2>/dev/null || true
 sleep 2
 
-./sing-box run -c sing-box-config.json > sing-box.log 2>&1 &
+./xray run -c xray-config.json > xray.log 2>&1 &
 sleep 5
 
-if ! pgrep -f sing-box > /dev/null; then
-  echo "[ERROR] sing-box 进程启动失败，查看日志:"
-  cat sing-box.log
+if ! pgrep -f xray > /dev/null; then
+  echo "[ERROR] xray 进程启动失败，查看日志:"
+  cat xray.log
   exit 1
 fi
 
@@ -458,6 +337,6 @@ for i in {1..3}; do
 done
 
 echo "[ERROR] ❌ 代理连接失败"
-echo "---- sing-box 日志 ----"
-cat sing-box.log
+echo "---- xray 日志 ----"
+cat xray.log
 exit 1

@@ -7,9 +7,9 @@
 ## ✨ 本 fork 的改进
 
 - ✅ **修复 GOST 代理失效 bug**：原版 `if: ${{ env.ORIHOST_GOST_PROXY != '' }}` 读的是 step 自己的 env（恒为 false），代理步骤从未执行过；改为直接判断 `secrets` 上下文
-- ✅ **新增 sing-box 代理**（`scripts/setup_proxy.sh`，收编自 eooce 系七协议解析脚本）：支持 vless / vmess / trojan / hysteria2 / tuic / anytls / socks5 分享链接，自动起本地 SOCKS5:1080 + HTTP:1081 双入站
-- ✅ **代理优先级**：`NODE_LINK`（sing-box）→ `ORIHOST_GOST_PROXY`（GOST 兜底）→ 直连
-- ✅ **修复 sing-box 证书校验坑**：v1.13+ 强制校验 SAN 字段，家宽/自建 CN-only 证书会被拒连，默认 `insecure=true`
+- ✅ **新增 xray 代理**（`scripts/setup_proxy.sh`，收编自 eooce 系四协议解析脚本）：支持 vless / vmess / trojan / socks5 分享链接，自动起本地 SOCKS5:1080 + HTTP:1081 双入站
+- ✅ **代理优先级**：`NODE_LINK`（xray）→ `ORIHOST_GOST_PROXY`（GOST 兜底）→ 直连
+- ✅ **修复 xray 证书校验坑**：锁 v1.8.24（v24+ 移除 `allowInsecure`），家宽/自建 CN-only 证书可正常连接，默认 `insecure=true`
 - ✅ 简化 checkout（不再拉取"自己仓库"），Secrets 一律走 env 块不内联进脚本
 
 ## 🚀 使用方法
@@ -23,7 +23,7 @@
 | Secret | 必填 | 说明 |
 |---|---|---|
 | `ORI_COOKIE` | ✅ | Orihost 面板登录 cookie。浏览器登录 `panel.orihost.com` → F12 → Application → Cookies → 复制 `remember_web_59ba36...` 的 **value** |
-| `NODE_LINK` | 🟡 | 代理节点分享链接（七协议任选），sing-box 出口，**推荐**（防面板按 IP 限制） |
+| `NODE_LINK` | 🟡 | 代理节点分享链接（vless/vmess/trojan/socks5 四协议），xray 出口，**推荐**（防面板按 IP 限制） |
 | `ORIHOST_GOST_PROXY` | 🟡 | 备用代理地址（`NODE_LINK` 未配置时生效） |
 | `TG_BOT` | 🟡 | 续期结果推送，格式 `chat_id,token`（逗号分隔） |
 
@@ -54,6 +54,6 @@ RENEWAL_MAX = 21                             # 最多续期次数
 ## 🙏 致谢
 
 - [yanyumm1/orihost-auto](https://github.com/yanyumm1/orihost-auto) —— 原始续期脚本与工作流
-- [eooce](https://github.com/eooce) —— 免费托管续期方案与 sing-box 七协议解析脚本
+- [eooce](https://github.com/eooce) —— 免费托管续期方案与 xray 四协议解析脚本
 - [ginuerzh/gost](https://github.com/ginuerzh/gost) —— GOST 代理
-- [SagerNet/sing-box](https://github.com/SagerNet/sing-box) —— sing-box 内核
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core) —— xray 内核

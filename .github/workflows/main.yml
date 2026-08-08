@@ -19,11 +19,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install curl_cffi
 
-      # ===== sing-box 代理（NODE_LINK 七协议，优先）=====
-      # NODE_LINK 支持 vless/vmess/trojan/hy2/tuic/anytls/socks5 分享链接
-      # 自动下载 sing-box、解析链接、起本地 SOCKS5:1080 + HTTP:1081 双入站，
+      # ===== xray 代理（NODE_LINK 四协议，优先）=====
+      # NODE_LINK 支持 vless/vmess/trojan/socks5 分享链接
+      # 自动下载 xray-core v1.8.24（兼容 allowInsecure）、解析链接、
+      # 起本地 SOCKS5:1080 + HTTP:1081 双入站，
       # 测通后写 IS_PROXY / PROXY_SERVER 到 $GITHUB_ENV
-      - name: 🛡️ 启动 sing-box 代理
+      # 注意：xray 内核不支持 hysteria2/tuic/anytls（sing-box 特性）
+      - name: 🛡️ 启动 xray 代理
         if: ${{ secrets.NODE_LINK != '' }}
         env:
           NODE_LINK: ${{ secrets.NODE_LINK }}
@@ -51,6 +53,6 @@ jobs:
         env:
           ORI_COOKIE: ${{ secrets.ORI_COOKIE }}
           TG_BOT: ${{ secrets.TG_BOT }}
-          # sing-box 优先（写入 PROXY_SERVER），未配置则回退 GOST secret
+          # xray 优先（写入 PROXY_SERVER），未配置则回退 GOST secret
           ORIHOST_GOST_PROXY: ${{ env.PROXY_SERVER || secrets.ORIHOST_GOST_PROXY }}
         run: python main.py
