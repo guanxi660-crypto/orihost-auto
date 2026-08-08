@@ -79,8 +79,8 @@ jobs:
 
           echo -e "$LOG_BODY" > cleanup-log.txt
 
-      # 5️⃣ 更新 README
-      - name: Update README
+      # 5️⃣ 更新清理日志（独立文件，不覆盖 README 使用说明）
+      - name: Update cleanup log
         run: |
           TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
 
@@ -88,7 +88,7 @@ jobs:
             echo "### 🧹 Cleanup Log ($TIME)"
             echo
             cat cleanup-log.txt
-          } > README.md
+          } > CLEANUP_LOG.md
 
       # 6️⃣ 提交更改
       - name: Commit changes
@@ -96,7 +96,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add README.md
+          git add CLEANUP_LOG.md
 
           if ! git diff --cached --quiet; then
             git commit -m "🧹 Cleanup workflow runs & artifacts log"
