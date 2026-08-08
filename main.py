@@ -22,8 +22,15 @@ TG_ID, TG_TOKEN = TG_BOT.split(",", 1) if TG_BOT else (None, None)
 
 # ===== 代理 =====
 if GOST_PROXY:
+    # 本地 xray 双入站：SOCKS5:1080 + HTTP:1081。
+    # curl_cffi(BoringSSL) 走 socks5 隧道 TLS 握手会被断(SSL_ERROR_SYSCALL)，
+    # 但走 HTTP CONNECT 隧道稳定——本地代理自动切到 HTTP 入站 1081。
+    if GOST_PROXY.startswith("socks5://127.0.0.1:1080") or GOST_PROXY.startswith("socks://127.0.0.1:1080"):
+        GOST_PROXY = "http://127.0.0.1:1081"
+        print("🛡️ 代理(HTTP入站):", GOST_PROXY)
+    else:
+        print("🛡️ 代理:", GOST_PROXY)
     PROXIES = {"http": GOST_PROXY, "https": GOST_PROXY}
-    print("🛡️ 代理:", GOST_PROXY)
 else:
     PROXIES = None
     print("🌐 直连")
