@@ -36,6 +36,13 @@ else:
     print("🌐 直连")
 
 # ===== 工具 =====
+# 通知收集器：关键流程行同时打印 + 记入列表，结束时汇总发送
+_notify_lines = []
+
+def log_line(msg):
+    print(msg)
+    _notify_lines.append(msg)
+
 def send_tg(msg):
     if not TG_ID or not TG_TOKEN:
         return
@@ -150,7 +157,7 @@ def do_renew(s, h):
         # cooldown检查
         cd = check_cooldown(s, h)
         if cd > 0:
-            print(f"⏳ 冷却中: {cd}s")
+            log_line(f"⏳ 冷却中: {cd}s")
             time.sleep(cd)
             return False
 
@@ -158,7 +165,7 @@ def do_renew(s, h):
         r = s.post(f"{PANEL_URL}/api/client/servers/{SERVER_UUID}/renew/begin", headers=h, timeout=20)
 
         if not r.ok:
-            print("❌ begin失败")
+            log_line("❌ begin失败")
             return False
 
         data = r.json()
@@ -166,10 +173,10 @@ def do_renew(s, h):
         wait   = data.get("dwell_seconds", 15)
 
         if not ad_url:
-            print("⚠️ 无广告")
+            log_line("⚠️ 无广告")
             return False
 
-        print("🌐 广告已获取")
+        log_line("🌐 广告已获取")
 
         visit_ad(s, ad_url, wait)
 
@@ -178,7 +185,7 @@ def do_renew(s, h):
             r2 = s.get(f"{PANEL_URL}/api/client/renewal/complete", headers=h, timeout=20)
 
             if r2.status_code in (200,204):
-                print("✅ 成功")
+                log_line("✅ 成功")
                 return True
 
             # 尝试刷新XSRF
@@ -188,11 +195,11 @@ def do_renew(s, h):
 
             time.sleep(2)
 
-        print("❌ claim失败")
+        log_line("❌ claim失败")
         return False
 
     except Exception as e:
-        print("❌ 异常:", e)
+        log_line(f"❌ 异常: {e}")
         return False
 
 # ===== 主 =====
@@ -213,10 +220,11 @@ def main():
         print("❌ 获取IP失败:", e)
 
     renewal, days = get_info(s, h)
-    print(f"📅 当前: {renewal} / {days}天")
+    log_line(f"📅 当前: {renewal} / {days}天")
 
     if renewal >= RENEWAL_MAX:
-        print("⏭️ 已满")
+        log_line("⏭️ 已满")
+        send_tg("\n".join(_notify_lines))
         return
 
     count = 0
@@ -230,11 +238,11 @@ def main():
         time.sleep(random.randint(3,7))
 
         renewal, days = get_info(s, h)
-        print(f"➡️ {renewal}")
+        log_line(f"➡️ {renewal}")
 
-    print(f"🎉 完成 {count} 次")
+    log_line(f"🎉 完成 {count} 次")
 
-    send_tg(f"Orihost续期\n次数:{count}\n剩余:{days}天")
+    send_tg("\n".join(_notify_lines))
 
 # ===== 入口 =====
 if __name__ == "__main__":
