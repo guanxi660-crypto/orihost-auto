@@ -35,6 +35,17 @@ jobs:
         if: ${{ env.NODE_LINK != '' }}
         run: bash scripts/setup_proxy.sh
 
+      # ===== 出口 IP 质检（诊断：CF 拦截判断依据）=====
+      # 若出口是机房/IDC 段（org 含 hosting/IDC/云厂商），CF 会在 TLS 层直接 RST
+      # 真家宽显示运营商（Comcast/AT&T/德国电信/大陆电信联通等）
+      - name: 🌐 出口 IP 质检
+        if: ${{ env.NODE_LINK != '' }}
+        run: |
+          echo "--- 代理出口信息 ---"
+          curl -s --max-time 15 -x socks5://127.0.0.1:1080 https://ipinfo.io/json | jq '{ip, org, city, country, hosting}'
+          echo "--- 面板可达性（TLS 握手测试）---"
+          curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 15 -x socks5://127.0.0.1:1080 https://panel.orihost.com/dashboard || echo "❌ TLS 握手失败（CF 拒绝出口 IP）"
+
       # ===== GOST 代理兜底（未配 NODE_LINK 时用）=====
       - name: 🛡️ 启动 GOST 代理（兜底）
         if: ${{ env.NODE_LINK == '' && env.ORIHOST_GOST_PROXY != '' }}
