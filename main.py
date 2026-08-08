@@ -64,8 +64,14 @@ def make_session(token):
             xsrf = s.cookies.get("XSRF-TOKEN")
             if xsrf:
                 return s, urllib.parse.unquote(xsrf)
+            # 诊断：为何拿不到 XSRF-TOKEN
+            print(f"  [诊断] 第{i+1}次 /dashboard → HTTP {r.status_code}")
+            print(f"  [诊断] URL: {r.url}")
+            print(f"  [诊断] Set-Cookie 头: {r.headers.get('Set-Cookie', '(无)')[:200]}")
+            print(f"  [诊断] 响应前300字: {r.text[:300]!r}")
             time.sleep(2)
-        except:
+        except Exception as e:
+            print(f"  [诊断] 第{i+1}次请求异常: {e}")
             time.sleep(2)
 
     raise Exception("❌ XSRF失败")
